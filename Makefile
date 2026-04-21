@@ -133,16 +133,25 @@ install-dbus:
 	@TARGET_HOME="$$HOME"; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
 		TARGET_HOME="$$(getent passwd "$$SUDO_USER" | cut -d: -f6)"; \
+		test -n "$$TARGET_HOME" || { \
+			echo "ERROR: cannot resolve home directory for SUDO_USER=$$SUDO_USER"; \
+			echo "  (getent passwd returned nothing — is $$SUDO_USER a real user on this system?)"; \
+			exit 1; \
+		}; \
 		echo "sudo detected — installing D-Bus service file for user $$SUDO_USER (home: $$TARGET_HOME)"; \
 	fi; \
 	TARGET_DIR="$$TARGET_HOME/.local/share/dbus-1/services"; \
 	TARGET_FILE="$$TARGET_DIR/$(DBUS_SERVICE_NAME)"; \
-	BIN_PATH="$(DESTDIR)$(BINDIR)/$(BIN_NAME)"; \
+	BIN_PATH="$(BINDIR)/$(BIN_NAME)"; \
 	echo "Installing D-Bus service file to $$TARGET_FILE"; \
+	echo "  (D-Bus Exec path → $$BIN_PATH)"; \
 	mkdir -p "$$TARGET_DIR" || exit 1; \
 	sed "s|@BIN_PATH@|$$BIN_PATH|g" "$(DBUS_SERVICE_TEMPLATE)" > "$$TARGET_FILE" || exit 1; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
-		chown "$$SUDO_USER:" "$$TARGET_FILE" "$$TARGET_DIR"; \
+		chown "$$SUDO_USER:" "$$TARGET_FILE" "$$TARGET_DIR" || { \
+			echo "ERROR: chown to $$SUDO_USER failed; D-Bus user-service would be unmanageable by the target user"; \
+			exit 1; \
+		}; \
 	fi
 
 uninstall:
@@ -152,6 +161,12 @@ uninstall:
 	@TARGET_HOME="$$HOME"; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
 		TARGET_HOME="$$(getent passwd "$$SUDO_USER" | cut -d: -f6)"; \
+		test -n "$$TARGET_HOME" || { \
+			echo "ERROR: cannot resolve home directory for SUDO_USER=$$SUDO_USER"; \
+			echo "  (getent passwd returned nothing — D-Bus service file left behind;"; \
+			echo "   remove manually from that user's ~/.local/share/dbus-1/services/)"; \
+			exit 1; \
+		}; \
 	fi; \
 	rm -f "$$TARGET_HOME/.local/share/dbus-1/services/$(DBUS_SERVICE_NAME)"
 	@echo "Uninstalled."
@@ -160,29 +175,36 @@ uninstall:
 # Upgrade — daemon is resident in most configs, so capture + restart.
 # ─────────────────────────────────────────────────────────────────────
 #
-# Linux-only: `pidof` is procps-ng. nwg-notifications targets Hyprland +
+# Linux-only: `pgrep` is procps-ng. nwg-notifications targets Hyprland +
 # Sway (Linux Wayland compositors); cross-platform support out of scope.
+#
+# User-scoping: `pgrep -u $TARGET_USER -x $(BIN_NAME)` restricts process
+# discovery to the desktop user even when upgrade runs under sudo. The
+# daemon is per-user (one D-Bus session per user); without -u we'd also
+# match instances owned by other users on the same machine and SIGKILL
+# them, which is never what the invoker wanted.
 #
 # Root-refusal guard on the replay step: captured args come from the
 # desktop user's process, replaying as root would start the daemon in
 # the wrong user context (D-Bus sessions are per-user anyway).
 upgrade: build-release
-	@RUNNING_PIDS="$$(pidof -c $(BIN_NAME) 2>/dev/null || true)"; \
+	@TARGET_USER="$${SUDO_USER:-$$(id -un)}"; \
+	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
 	if [ -n "$$RUNNING_PIDS" ]; then \
 		ARGS_FILE="$$(mktemp)" || exit 1; \
 		trap 'rm -f "$$ARGS_FILE"' EXIT; \
 		for pid in $$RUNNING_PIDS; do \
 			target/release/$(BIN_NAME) --dump-args "$$pid" >> "$$ARGS_FILE" || exit 1; \
 		done; \
-		echo "Running daemon(s): $$RUNNING_PIDS — stopping before install"; \
+		echo "Running daemon(s) for $$TARGET_USER: $$RUNNING_PIDS — stopping before install"; \
 		kill $$RUNNING_PIDS 2>/dev/null || true; \
 		sleep 1; \
-		STILL_RUNNING="$$(pidof -c $(BIN_NAME) 2>/dev/null || true)"; \
+		STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
 		if [ -n "$$STILL_RUNNING" ]; then \
 			echo "Warning: still running after SIGTERM: $$STILL_RUNNING — escalating to SIGKILL"; \
 			kill -9 $$STILL_RUNNING 2>/dev/null || true; \
 			sleep 1; \
-			STILL_RUNNING="$$(pidof -c $(BIN_NAME) 2>/dev/null || true)"; \
+			STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
 			test -z "$$STILL_RUNNING" || { \
 				echo "ERROR: failed to stop $$STILL_RUNNING after SIGKILL; aborting install to avoid file-in-use"; \
 				exit 1; \
@@ -204,7 +226,7 @@ upgrade: build-release
 			fi; \
 		fi; \
 	else \
-		echo "No running daemon — installing; next notify-send D-Bus-activates the new binary"; \
+		echo "No running daemon for $$TARGET_USER — installing; next notify-send D-Bus-activates the new binary"; \
 		$(MAKE) install-bin install-dbus || exit 1; \
 	fi
 	@echo "Upgrade complete."
