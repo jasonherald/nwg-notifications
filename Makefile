@@ -121,9 +121,12 @@ install-bin:
 	@echo "Installing binary to $(DESTDIR)$(BINDIR)/$(BIN_NAME)"
 	install -D -m 755 target/release/$(BIN_NAME) "$(DESTDIR)$(BINDIR)/$(BIN_NAME)"
 
-# install-dbus substitutes the BIN_PATH placeholder in the template
-# with the actual binary location (respects DESTDIR/BINDIR the user
-# chose for install-bin), then writes the result into $(HOME)/.local/
+# install-dbus substitutes the @BIN_PATH@ placeholder in the template
+# with the RUNTIME binary path ($(BINDIR)/$(BIN_NAME)). DESTDIR is
+# intentionally excluded — it's the packager's staging directory
+# (e.g. `make install DESTDIR=/tmp/pkg`) and baking it into D-Bus
+# Exec= would activate a path that doesn't exist on the packaged
+# system. The substituted service file is written into $(HOME)/.local/
 # share/dbus-1/services/. Always user-scope — see Makefile header.
 #
 # If running under sudo with SUDO_USER set, we install to the ORIGINAL
@@ -178,18 +181,27 @@ uninstall:
 # Linux-only: `pgrep` is procps-ng. nwg-notifications targets Hyprland +
 # Sway (Linux Wayland compositors); cross-platform support out of scope.
 #
-# User-scoping: `pgrep -u $TARGET_USER -x $(BIN_NAME)` restricts process
-# discovery to the desktop user even when upgrade runs under sudo. The
-# daemon is per-user (one D-Bus session per user); without -u we'd also
-# match instances owned by other users on the same machine and SIGKILL
-# them, which is never what the invoker wanted.
+# User-scoping: `pgrep -u $TARGET_USER -f $PGREP_PATTERN` restricts
+# process discovery to the desktop user even when upgrade runs under
+# sudo. The daemon is per-user (one D-Bus session per user); without
+# -u we'd also match instances owned by other users on the same
+# machine and SIGKILL them, which is never what the invoker wanted.
+#
+# -f (not -x): the kernel truncates /proc/PID/comm to 15 chars (TASK_
+# COMM_LEN=16 incl. NUL), so `nwg-notifications` (17 chars) appears
+# in comm as `nwg-notificatio`. `pgrep -x` matches against comm and
+# would always miss the daemon. `pgrep -f` matches against the full
+# /proc/PID/cmdline. The pattern anchors on `(^|/)` so the binary
+# name only matches as an argv[0] (or its basename), not as a
+# substring of some unrelated process's args.
 #
 # Root-refusal guard on the replay step: captured args come from the
 # desktop user's process, replaying as root would start the daemon in
 # the wrong user context (D-Bus sessions are per-user anyway).
 upgrade: build-release
 	@TARGET_USER="$${SUDO_USER:-$$(id -un)}"; \
-	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
+	PGREP_PATTERN="(^|/)$(BIN_NAME)([[:space:]]|$$)"; \
+	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 	if [ -n "$$RUNNING_PIDS" ]; then \
 		ARGS_FILE="$$(mktemp)" || exit 1; \
 		trap 'rm -f "$$ARGS_FILE"' EXIT; \
@@ -199,12 +211,12 @@ upgrade: build-release
 		echo "Running daemon(s) for $$TARGET_USER: $$RUNNING_PIDS — stopping before install"; \
 		kill $$RUNNING_PIDS 2>/dev/null || true; \
 		sleep 1; \
-		STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
+		STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 		if [ -n "$$STILL_RUNNING" ]; then \
 			echo "Warning: still running after SIGTERM: $$STILL_RUNNING — escalating to SIGKILL"; \
 			kill -9 $$STILL_RUNNING 2>/dev/null || true; \
 			sleep 1; \
-			STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -x "$(BIN_NAME)" 2>/dev/null || true)"; \
+			STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 			test -z "$$STILL_RUNNING" || { \
 				echo "ERROR: failed to stop $$STILL_RUNNING after SIGKILL; aborting install to avoid file-in-use"; \
 				exit 1; \
