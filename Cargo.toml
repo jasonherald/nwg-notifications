@@ -1,0 +1,43 @@
+[package]
+name = "nwg-notifications"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "D-Bus notification daemon + notification center for Hyprland and Sway. Claims org.freedesktop.Notifications, shows popup toasts, and ships a slide-out history panel with Do-Not-Disturb controls and optional waybar integration. Replaces mako; runs standalone."
+readme = "README.md"
+repository = "https://github.com/jasonherald/nwg-notifications"
+keywords = ["hyprland", "sway", "notifications", "wayland", "dbus"]
+categories = ["gui", "command-line-utilities"]
+
+[[bin]]
+name = "nwg-notifications"
+path = "src/main.rs"
+
+[dependencies]
+# Shared library (library + binaries all on the 0.3.x line)
+nwg-common = "0.3"
+
+# GTK4 + Wayland layer shell. `gtk4::gio` provides the D-Bus server
+# plumbing (bus_own_name, BusType::Session, DBusConnection); no
+# separate gio dep needed.
+gtk4 = "0.10"
+gtk4-layer-shell = "0.7"
+
+# Serialization (notification history persistence JSON, waybar status JSON)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Unix signals and process management
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
+libc = "0.2"
