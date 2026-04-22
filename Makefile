@@ -206,6 +206,23 @@ uninstall:
 # `/nwg-notifications` — that's argv[0] by definition since pgrep -f
 # matches the null-separated cmdline with nulls rendered as spaces.
 #
+# Install-target validation (issue #5): before killing anything, resolve
+# /proc/$PID/exe for each running daemon and compare against where this
+# upgrade would install ($(BINDIR)/$(BIN_NAME)). If they don't match —
+# usually because the user installed to ~/.cargo/bin but invoked upgrade
+# without re-passing PREFIX/BINDIR, so we'd try to install to /usr/local
+# and fail on permission — we abort with a helpful error BEFORE touching
+# the daemon. Previously the recipe killed the daemon first and then
+# failed the install, leaving the desktop session with a silently dead
+# notification daemon.
+#
+# Atomicity (issue #5): recipe order is validate → capture args → install
+# → kill → restart. Install happens while the daemon is still running
+# (Linux's mmap semantics mean replacing the binary file via `install`'s
+# unlink+write doesn't disturb the running process's loaded pages). If
+# install fails, the daemon is never killed and the user sees a clear
+# error.
+#
 # Root-refusal guard on the replay step: captured args come from the
 # desktop user's process, replaying as root would start the daemon in
 # the wrong user context (D-Bus sessions are per-user anyway).
@@ -214,12 +231,35 @@ upgrade: build-release
 	PGREP_PATTERN="^([^[:space:]]+/)?$(BIN_NAME)([[:space:]]|$$)"; \
 	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 	if [ -n "$$RUNNING_PIDS" ]; then \
+		INSTALL_TARGET="$(DESTDIR)$(BINDIR)/$(BIN_NAME)"; \
+		INSTALL_TARGET_REAL="$$(readlink -f "$$INSTALL_TARGET" 2>/dev/null || echo "$$INSTALL_TARGET")"; \
+		for pid in $$RUNNING_PIDS; do \
+			RUNNING_EXE="$$(readlink -f "/proc/$$pid/exe" 2>/dev/null)"; \
+			test -n "$$RUNNING_EXE" || continue; \
+			if [ "$$RUNNING_EXE" != "$$INSTALL_TARGET_REAL" ]; then \
+				RUNNING_BINDIR="$$(dirname "$$RUNNING_EXE")"; \
+				echo "ERROR: running daemon (pid $$pid) is installed at"; \
+				echo "         $$RUNNING_EXE"; \
+				echo "       but 'make upgrade' would install to"; \
+				echo "         $$INSTALL_TARGET"; \
+				echo ""; \
+				echo "       Daemon NOT killed — a prefix-mismatched upgrade would leave"; \
+				echo "       you with a dead notification daemon and no new binary."; \
+				echo ""; \
+				echo "       Re-run with BINDIR matching the running binary:"; \
+				echo "         make upgrade BINDIR=$$RUNNING_BINDIR"; \
+				echo "       (install-dbus is always user-scope — PREFIX is ignored here"; \
+				echo "       because the D-Bus service file always lands in ~/.local.)"; \
+				exit 1; \
+			fi; \
+		done; \
 		ARGS_FILE="$$(mktemp)" || exit 1; \
 		trap 'rm -f "$$ARGS_FILE"' EXIT; \
 		for pid in $$RUNNING_PIDS; do \
-			target/release/$(BIN_NAME) --dump-args "$$pid" >> "$$ARGS_FILE" || exit 1; \
+			target/release/$(BIN_NAME) --dump-args "$$pid" >> "$$ARGS_FILE" || continue; \
 		done; \
-		echo "Running daemon(s) for $$TARGET_USER: $$RUNNING_PIDS — stopping before install"; \
+		$(MAKE) install-bin install-dbus || exit 1; \
+		echo "Running daemon(s) for $$TARGET_USER: $$RUNNING_PIDS — stopping"; \
 		kill $$RUNNING_PIDS 2>/dev/null || true; \
 		sleep 1; \
 		STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
@@ -229,11 +269,10 @@ upgrade: build-release
 			sleep 1; \
 			STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 			test -z "$$STILL_RUNNING" || { \
-				echo "ERROR: failed to stop $$STILL_RUNNING after SIGKILL; aborting install to avoid file-in-use"; \
+				echo "ERROR: failed to stop $$STILL_RUNNING after SIGKILL; binary installed but daemon still holds old mmap"; \
 				exit 1; \
 			}; \
 		fi; \
-		$(MAKE) install-bin install-dbus || exit 1; \
 		if [ -s "$$ARGS_FILE" ]; then \
 			if [ "$$(id -u)" -eq 0 ]; then \
 				echo "Refusing to replay captured daemon args as root — D-Bus sessions"; \
