@@ -191,16 +191,27 @@ uninstall:
 # COMM_LEN=16 incl. NUL), so `nwg-notifications` (17 chars) appears
 # in comm as `nwg-notificatio`. `pgrep -x` matches against comm and
 # would always miss the daemon. `pgrep -f` matches against the full
-# /proc/PID/cmdline. The pattern anchors on `(^|/)` so the binary
-# name only matches as an argv[0] (or its basename), not as a
-# substring of some unrelated process's args.
+# /proc/PID/cmdline.
+#
+# The pattern anchors on `^` so it matches argv[0] only — NOT any
+# occurrence of `/nwg-notifications` elsewhere in the cmdline. That
+# matters because running `make upgrade` from the source checkout
+# (`cd ~/source/nwg-notifications && make upgrade`) leaves the
+# orchestrating bash shell with `/home/.../source/nwg-notifications`
+# in its cmdline. The previous `(^|/)` alternation matched that
+# substring and produced spurious pids, which then failed the
+# --dump-args TOCTOU check and aborted the upgrade (see issue #4).
+# `^([^[:space:]]+/)?$(BIN_NAME)(...)` requires the cmdline to
+# START with either bare `nwg-notifications` or a path ending in
+# `/nwg-notifications` — that's argv[0] by definition since pgrep -f
+# matches the null-separated cmdline with nulls rendered as spaces.
 #
 # Root-refusal guard on the replay step: captured args come from the
 # desktop user's process, replaying as root would start the daemon in
 # the wrong user context (D-Bus sessions are per-user anyway).
 upgrade: build-release
 	@TARGET_USER="$${SUDO_USER:-$$(id -un)}"; \
-	PGREP_PATTERN="(^|/)$(BIN_NAME)([[:space:]]|$$)"; \
+	PGREP_PATTERN="^([^[:space:]]+/)?$(BIN_NAME)([[:space:]]|$$)"; \
 	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 	if [ -n "$$RUNNING_PIDS" ]; then \
 		ARGS_FILE="$$(mktemp)" || exit 1; \
