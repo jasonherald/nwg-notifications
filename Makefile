@@ -191,38 +191,146 @@ uninstall:
 # COMM_LEN=16 incl. NUL), so `nwg-notifications` (17 chars) appears
 # in comm as `nwg-notificatio`. `pgrep -x` matches against comm and
 # would always miss the daemon. `pgrep -f` matches against the full
-# /proc/PID/cmdline. The pattern anchors on `(^|/)` so the binary
-# name only matches as an argv[0] (or its basename), not as a
-# substring of some unrelated process's args.
+# /proc/PID/cmdline.
+#
+# The pattern anchors on `^` so it matches argv[0] only — NOT any
+# occurrence of `/nwg-notifications` elsewhere in the cmdline. That
+# matters because running `make upgrade` from the source checkout
+# (`cd ~/source/nwg-notifications && make upgrade`) leaves the
+# orchestrating bash shell with `/home/.../source/nwg-notifications`
+# in its cmdline. The previous `(^|/)` alternation matched that
+# substring and produced spurious pids, which then failed the
+# --dump-args TOCTOU check and aborted the upgrade (see issue #4).
+# `^([^[:space:]]+/)?$(BIN_NAME)(...)` requires the cmdline to
+# START with either bare `nwg-notifications` or a path ending in
+# `/nwg-notifications` — that's argv[0] by definition since pgrep -f
+# matches the null-separated cmdline with nulls rendered as spaces.
+#
+# Install-target validation (issue #5): before killing anything, resolve
+# /proc/$PID/exe for each running daemon and compare against where this
+# upgrade would install ($(BINDIR)/$(BIN_NAME)). If they don't match —
+# usually because the user installed to ~/.cargo/bin but invoked upgrade
+# without re-passing PREFIX/BINDIR, so we'd try to install to /usr/local
+# and fail on permission — we abort with a helpful error BEFORE touching
+# the daemon. Previously the recipe killed the daemon first and then
+# failed the install, leaving the desktop session with a silently dead
+# notification daemon.
+#
+# Atomicity (issue #5): recipe order is validate → capture args → install
+# → kill → restart. Install happens while the daemon is still running
+# (Linux's mmap semantics mean replacing the binary file via `install`'s
+# unlink+write doesn't disturb the running process's loaded pages). If
+# install fails, the daemon is never killed and the user sees a clear
+# error.
+#
+# PID identity validation (CodeRabbit follow-up on #5): we capture
+# `/proc/$PID/stat` field 22 (starttime — clock ticks since boot) when
+# we first touch each pid, and re-verify it matches before sending
+# SIGTERM and before sending SIGKILL. Linux reuses pids after pid_max
+# wraps; though vanishingly unlikely on a desktop in a sub-second
+# window, it's cheap to defend against — without this check a reused
+# pid could point at an unrelated process by the time `kill` fires.
+# Starttime is kernel-authoritative and unique per (pid, boot) pair.
+#
+# --dump-args failure handling (CodeRabbit follow-up on #5): a failure
+# is only swallowed when the pid has actually disappeared (no
+# `/proc/$PID/exe`). If --dump-args fails on a still-live daemon that's
+# a real bug that'd leave us with empty args + a killed daemon, so we
+# fail-fast with an error.
 #
 # Root-refusal guard on the replay step: captured args come from the
 # desktop user's process, replaying as root would start the daemon in
 # the wrong user context (D-Bus sessions are per-user anyway).
 upgrade: build-release
 	@TARGET_USER="$${SUDO_USER:-$$(id -un)}"; \
-	PGREP_PATTERN="(^|/)$(BIN_NAME)([[:space:]]|$$)"; \
+	PGREP_PATTERN="^([^[:space:]]+/)?$(BIN_NAME)([[:space:]]|$$)"; \
 	RUNNING_PIDS="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
 	if [ -n "$$RUNNING_PIDS" ]; then \
-		ARGS_FILE="$$(mktemp)" || exit 1; \
-		trap 'rm -f "$$ARGS_FILE"' EXIT; \
+		INSTALL_TARGET="$(DESTDIR)$(BINDIR)/$(BIN_NAME)"; \
+		INSTALL_TARGET_REAL="$$(readlink -f "$$INSTALL_TARGET" 2>/dev/null || echo "$$INSTALL_TARGET")"; \
 		for pid in $$RUNNING_PIDS; do \
-			target/release/$(BIN_NAME) --dump-args "$$pid" >> "$$ARGS_FILE" || exit 1; \
-		done; \
-		echo "Running daemon(s) for $$TARGET_USER: $$RUNNING_PIDS — stopping before install"; \
-		kill $$RUNNING_PIDS 2>/dev/null || true; \
-		sleep 1; \
-		STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
-		if [ -n "$$STILL_RUNNING" ]; then \
-			echo "Warning: still running after SIGTERM: $$STILL_RUNNING — escalating to SIGKILL"; \
-			kill -9 $$STILL_RUNNING 2>/dev/null || true; \
-			sleep 1; \
-			STILL_RUNNING="$$(pgrep -u "$$TARGET_USER" -f "$$PGREP_PATTERN" 2>/dev/null || true)"; \
-			test -z "$$STILL_RUNNING" || { \
-				echo "ERROR: failed to stop $$STILL_RUNNING after SIGKILL; aborting install to avoid file-in-use"; \
+			RUNNING_EXE="$$(readlink -f "/proc/$$pid/exe" 2>/dev/null)"; \
+			if [ -z "$$RUNNING_EXE" ]; then \
+				if [ -d "/proc/$$pid" ]; then \
+					echo "ERROR: unable to resolve /proc/$$pid/exe for live daemon pid $$pid"; \
+					echo "       (process is alive but its exe symlink is unreadable — refusing to proceed"; \
+					echo "        without install-target validation)"; \
+					exit 1; \
+				fi; \
+				continue; \
+			fi; \
+			if [ "$$RUNNING_EXE" != "$$INSTALL_TARGET_REAL" ]; then \
+				RUNNING_BINDIR="$$(dirname "$$RUNNING_EXE")"; \
+				echo "ERROR: running daemon (pid $$pid) is installed at"; \
+				echo "         $$RUNNING_EXE"; \
+				echo "       but 'make upgrade' would install to"; \
+				echo "         $$INSTALL_TARGET"; \
+				echo ""; \
+				echo "       Daemon NOT killed — a prefix-mismatched upgrade would leave"; \
+				echo "       you with a dead notification daemon and no new binary."; \
+				echo ""; \
+				echo "       Re-run with BINDIR matching the running binary:"; \
+				echo "         make upgrade BINDIR=$$RUNNING_BINDIR"; \
+				echo "       (install-dbus is always user-scope — PREFIX is ignored here"; \
+				echo "       because the D-Bus service file always lands in ~/.local.)"; \
 				exit 1; \
-			}; \
-		fi; \
+			fi; \
+		done; \
+		ARGS_FILE="$$(mktemp)" || exit 1; \
+		RUNNING_INFO="$$(mktemp)" || exit 1; \
+		trap 'rm -f "$$ARGS_FILE" "$$RUNNING_INFO"' EXIT; \
+		for pid in $$RUNNING_PIDS; do \
+			START_TIME="$$(awk '{print $$22}' "/proc/$$pid/stat" 2>/dev/null || true)"; \
+			test -n "$$START_TIME" || continue; \
+			if ! target/release/$(BIN_NAME) --dump-args "$$pid" >> "$$ARGS_FILE"; then \
+				if [ -e "/proc/$$pid/exe" ]; then \
+					echo "ERROR: --dump-args failed for live daemon pid $$pid"; \
+					exit 1; \
+				fi; \
+				continue; \
+			fi; \
+			echo "$$pid $$START_TIME" >> "$$RUNNING_INFO"; \
+		done; \
 		$(MAKE) install-bin install-dbus || exit 1; \
+		VALIDATED_PIDS=""; \
+		while IFS=' ' read -r pid start_time; do \
+			ACTUAL_START="$$(awk '{print $$22}' "/proc/$$pid/stat" 2>/dev/null || true)"; \
+			if [ -n "$$ACTUAL_START" ] && [ "$$ACTUAL_START" = "$$start_time" ]; then \
+				VALIDATED_PIDS="$$VALIDATED_PIDS $$pid"; \
+			else \
+				echo "Skipping pid $$pid — no longer our daemon (starttime changed or process exited between capture and kill)"; \
+			fi; \
+		done < "$$RUNNING_INFO"; \
+		if [ -n "$$VALIDATED_PIDS" ]; then \
+			echo "Running daemon(s) for $$TARGET_USER:$$VALIDATED_PIDS — stopping"; \
+			kill $$VALIDATED_PIDS 2>/dev/null || true; \
+			sleep 1; \
+			STILL_RUNNING=""; \
+			for pid in $$VALIDATED_PIDS; do \
+				START_TIME="$$(grep "^$$pid " "$$RUNNING_INFO" | awk '{print $$2}')"; \
+				ACTUAL_START="$$(awk '{print $$22}' "/proc/$$pid/stat" 2>/dev/null || true)"; \
+				if [ -n "$$ACTUAL_START" ] && [ "$$ACTUAL_START" = "$$START_TIME" ]; then \
+					STILL_RUNNING="$$STILL_RUNNING $$pid"; \
+				fi; \
+			done; \
+			if [ -n "$$STILL_RUNNING" ]; then \
+				echo "Warning: still running after SIGTERM:$$STILL_RUNNING — escalating to SIGKILL"; \
+				kill -9 $$STILL_RUNNING 2>/dev/null || true; \
+				sleep 1; \
+				FINAL_ALIVE=""; \
+				for pid in $$STILL_RUNNING; do \
+					START_TIME="$$(grep "^$$pid " "$$RUNNING_INFO" | awk '{print $$2}')"; \
+					ACTUAL_START="$$(awk '{print $$22}' "/proc/$$pid/stat" 2>/dev/null || true)"; \
+					if [ -n "$$ACTUAL_START" ] && [ "$$ACTUAL_START" = "$$START_TIME" ]; then \
+						FINAL_ALIVE="$$FINAL_ALIVE $$pid"; \
+					fi; \
+				done; \
+				test -z "$$FINAL_ALIVE" || { \
+					echo "ERROR: failed to stop$$FINAL_ALIVE after SIGKILL; binary installed but daemon still holds old mmap"; \
+					exit 1; \
+				}; \
+			fi; \
+		fi; \
 		if [ -s "$$ARGS_FILE" ]; then \
 			if [ "$$(id -u)" -eq 0 ]; then \
 				echo "Refusing to replay captured daemon args as root — D-Bus sessions"; \
