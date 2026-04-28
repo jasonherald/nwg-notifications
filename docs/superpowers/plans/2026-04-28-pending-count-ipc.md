@@ -728,7 +728,7 @@ Find the active `## [X.Y.Z] — Unreleased` section. Under its `### Added` block
 
 Add a new H2 section to `README.md` (near the existing waybar integration section, or just above it). Title: "Querying notification count". Body:
 
-```markdown
+````markdown
 ## Querying notification count
 
 `nwg-notifications` exposes the current pending (unread) count via three
@@ -769,7 +769,7 @@ jq -r .count "$XDG_RUNTIME_DIR/mac-notifications-status.json"
 
 Combined with `SIGRTMIN+11` waybar refresh, this is zero-cost polling for
 status-bar widgets.
-```
+````
 
 (If the README already has a "Querying" or "Status file" section, integrate the new content there instead of duplicating.)
 
