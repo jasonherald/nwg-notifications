@@ -310,6 +310,12 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
     }
 }
 
+/// Timeout for the `--count` CLI's D-Bus call, in milliseconds.
+/// Local D-Bus calls to the running daemon are sub-millisecond when healthy;
+/// 2s is generous enough to absorb transient bus contention while keeping
+/// the CLI responsive when something is genuinely broken.
+const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
+
 /// Queries the running daemon's `GetCount()` method over the session bus
 /// and returns the unread count. Uses `NO_AUTO_START` so it never spawns
 /// a daemon — if no daemon is running, this returns an error.
@@ -325,11 +331,15 @@ pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
         None,
         None,
         gio::DBusCallFlags::NO_AUTO_START,
-        -1,
+        QUERY_COUNT_TIMEOUT_MS,
         gio::Cancellable::NONE,
     )?;
-    let count: u32 = result.child_value(0).get().unwrap_or(0);
-    Ok(count)
+    result.child_value(0).get::<u32>().ok_or_else(|| {
+        glib::Error::new(
+            gio::IOErrorEnum::InvalidData,
+            "GetCount returned unexpected payload type",
+        )
+    })
 }
 
 /// Emits CountChanged on the org.nwg.Notifications interface.
