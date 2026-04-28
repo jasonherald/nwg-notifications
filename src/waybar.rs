@@ -10,6 +10,7 @@ struct WaybarStatus {
     tooltip: String,
     alt: String,
     class: String,
+    count: usize,
 }
 
 /// Returns the path to the waybar status file.
@@ -28,6 +29,7 @@ pub fn update_status(unread: usize, dnd: bool) {
             tooltip: "Do Not Disturb".into(),
             alt: "dnd".into(),
             class: "dnd".into(),
+            count: unread,
         }
     } else if unread > 0 {
         WaybarStatus {
@@ -38,6 +40,7 @@ pub fn update_status(unread: usize, dnd: bool) {
             ),
             alt: "unread".into(),
             class: "unread".into(),
+            count: unread,
         }
     } else {
         WaybarStatus {
@@ -45,6 +48,7 @@ pub fn update_status(unread: usize, dnd: bool) {
             tooltip: "No notifications".into(),
             alt: "empty".into(),
             class: "empty".into(),
+            count: 0,
         }
     };
 
@@ -71,5 +75,26 @@ fn signal_waybar() {
         Err(e) => log::debug!("Failed to signal waybar: {e}"),
         Ok(s) if !s.success() => log::debug!("No waybar process to signal"),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_json_includes_count_field() {
+        let status = WaybarStatus {
+            text: "x".into(),
+            tooltip: "t".into(),
+            alt: "a".into(),
+            class: "c".into(),
+            count: 7,
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert!(
+            json.contains("\"count\":7"),
+            "expected count field in JSON, got: {json}"
+        );
     }
 }
