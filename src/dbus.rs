@@ -306,6 +306,28 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
     }
 }
 
+/// Queries the running daemon's `GetCount()` method over the session bus
+/// and returns the unread count. Uses `NO_AUTO_START` so it never spawns
+/// a daemon — if no daemon is running, this returns an error.
+///
+/// Used by the `--count` CLI subcommand.
+pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
+    let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    let result = connection.call_sync(
+        Some(NWG_COUNT_BUS_NAME),
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        "GetCount",
+        None,
+        None,
+        gio::DBusCallFlags::NO_AUTO_START,
+        -1,
+        gio::Cancellable::NONE,
+    )?;
+    let count: u32 = result.child_value(0).get().unwrap_or(0);
+    Ok(count)
+}
+
 /// Emits CountChanged on the org.nwg.Notifications interface.
 ///
 /// Best-effort: a failure here doesn't affect anything else; we log and move on.

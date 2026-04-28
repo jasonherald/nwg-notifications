@@ -23,6 +23,20 @@ fn main() {
     nwg_common::process::handle_dump_args();
     let config = NotificationConfig::parse();
 
+    if config.count {
+        match dbus::query_count_via_dbus() {
+            Ok(count) => {
+                println!("{}", count);
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to query count: {}", e);
+                eprintln!("(is the nwg-notifications daemon running?)");
+                std::process::exit(1);
+            }
+        }
+    }
+
     if config.debug {
         env_logger::Builder::from_default_env()
             .filter_level(log::LevelFilter::Debug)

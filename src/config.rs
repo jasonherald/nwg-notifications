@@ -46,6 +46,11 @@ pub struct NotificationConfig {
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
     pub wm: Option<nwg_common::compositor::WmOverride>,
+
+    /// Print the current pending notification count and exit.
+    /// Queries the running daemon over D-Bus; does not auto-start one if none is running.
+    #[arg(long)]
+    pub count: bool,
 }
 
 #[cfg(test)]
@@ -98,5 +103,17 @@ mod tests {
     fn popup_position_bottom_center() {
         let config = NotificationConfig::parse_from(["test", "--popup-position", "bottom-center"]);
         assert_eq!(config.popup_position, PopupPosition::BottomCenter);
+    }
+
+    #[test]
+    fn count_flag_defaults_false() {
+        let config = NotificationConfig::parse_from(["test"]);
+        assert!(!config.count);
+    }
+
+    #[test]
+    fn count_flag_set() {
+        let config = NotificationConfig::parse_from(["test", "--count"]);
+        assert!(config.count);
     }
 }
