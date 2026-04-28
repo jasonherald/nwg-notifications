@@ -30,3 +30,7 @@ own repo + crates.io crate.
 
 - crates.io metadata (`description`, `readme`, `keywords`, `categories`,
   `repository`) wired up.
+- `--popup-position` accepts `top-center` and `bottom-center` in addition to
+  the existing four corners. Centered placements anchor only the top or
+  bottom edge; gtk4-layer-shell centers the surface horizontally on the
+  unanchored axis. (#10)
