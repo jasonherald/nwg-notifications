@@ -206,6 +206,10 @@ fn handle_nwg_count_method(
         }
         _ => {
             log::warn!("Unknown nwg-count D-Bus method: {}", method);
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod",
+                &format!("Unknown method: {method}"),
+            );
         }
     }
 }
