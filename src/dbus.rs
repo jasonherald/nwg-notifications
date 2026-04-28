@@ -45,6 +45,25 @@ const INTROSPECT_XML: &str = r#"
 </node>
 "#;
 
+/// D-Bus introspection XML for the nwg-specific count IPC interface.
+const NWG_COUNT_INTROSPECT_XML: &str = r#"
+<node>
+  <interface name="org.nwg.Notifications">
+    <method name="GetCount">
+      <arg name="count" type="u" direction="out"/>
+    </method>
+    <signal name="CountChanged">
+      <arg name="count" type="u"/>
+    </signal>
+  </interface>
+</node>
+"#;
+
+/// D-Bus name for the nwg-specific count IPC interface.
+pub const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
+/// D-Bus object path for the nwg-specific count IPC interface.
+pub const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
+
 /// Callback invoked when a new notification arrives via D-Bus.
 /// Implement this to show popups, update waybar, etc.
 pub type OnNotify = Rc<dyn Fn(&Notification)>;
@@ -55,14 +74,16 @@ pub type OnClose = Rc<dyn Fn(u32)>;
 /// Registers the notification D-Bus server on the session bus.
 ///
 /// Runs entirely on the glib main loop — no threads or async needed.
+/// Acquires both `org.freedesktop.Notifications` (the standard notification
+/// daemon interface) and `org.nwg.Notifications` (the nwg-specific count IPC).
 pub fn register_server(
     state: &Rc<RefCell<NotificationState>>,
     on_notify: OnNotify,
     on_close: OnClose,
 ) {
-    let state = Rc::clone(state);
-    let on_notify = Rc::clone(&on_notify);
-    let on_close = Rc::clone(&on_close);
+    let state_fdo = Rc::clone(state);
+    let on_notify_fdo = Rc::clone(&on_notify);
+    let on_close_fdo = Rc::clone(&on_close);
 
     gio::bus_own_name(
         gio::BusType::Session,
@@ -70,8 +91,8 @@ pub fn register_server(
         gio::BusNameOwnerFlags::REPLACE,
         move |connection, _name| {
             log::info!("Acquired D-Bus name: org.freedesktop.Notifications");
-            state.borrow_mut().dbus_connection = Some(connection.clone());
-            register_object(&connection, &state, &on_notify, &on_close);
+            state_fdo.borrow_mut().dbus_connection = Some(connection.clone());
+            register_object(&connection, &state_fdo, &on_notify_fdo, &on_close_fdo);
         },
         |_connection, _name| {
             log::debug!("D-Bus name acquired callback");
@@ -80,6 +101,23 @@ pub fn register_server(
             log::error!(
                 "Lost D-Bus name org.freedesktop.Notifications — is another daemon running?"
             );
+        },
+    );
+
+    let state_nwg = Rc::clone(state);
+    gio::bus_own_name(
+        gio::BusType::Session,
+        NWG_COUNT_BUS_NAME,
+        gio::BusNameOwnerFlags::REPLACE,
+        move |connection, _name| {
+            log::info!("Acquired D-Bus name: {}", NWG_COUNT_BUS_NAME);
+            register_nwg_count_object(&connection, &state_nwg);
+        },
+        |_connection, _name| {
+            log::debug!("nwg-count D-Bus name acquired callback");
+        },
+        |_connection, _name| {
+            log::error!("Lost D-Bus name {} — another daemon?", NWG_COUNT_BUS_NAME);
         },
     );
 }
@@ -127,6 +165,47 @@ fn handle_method(
         "GetServerInformation" => handle_server_info(invocation),
         _ => {
             log::warn!("Unknown D-Bus method: {}", method);
+        }
+    }
+}
+
+fn register_nwg_count_object(
+    connection: &gio::DBusConnection,
+    state: &Rc<RefCell<NotificationState>>,
+) {
+    let node_info = gio::DBusNodeInfo::for_xml(NWG_COUNT_INTROSPECT_XML)
+        .expect("Failed to parse nwg-count introspection XML");
+
+    let interface_info = node_info
+        .lookup_interface(NWG_COUNT_BUS_NAME)
+        .expect("nwg-count interface not found in XML");
+
+    let state = Rc::clone(state);
+
+    connection
+        .register_object(NWG_COUNT_OBJECT_PATH, &interface_info)
+        .method_call(
+            move |_conn, _sender, _path, _iface, method, _params, invocation| {
+                handle_nwg_count_method(method, invocation, &state);
+            },
+        )
+        .build()
+        .expect("Failed to register nwg-count D-Bus object");
+}
+
+fn handle_nwg_count_method(
+    method: &str,
+    invocation: gio::DBusMethodInvocation,
+    state: &Rc<RefCell<NotificationState>>,
+) {
+    match method {
+        "GetCount" => {
+            let count = state.borrow().unread_count() as u32;
+            let result = glib::Variant::from((count,));
+            invocation.return_value(Some(&result));
+        }
+        _ => {
+            log::warn!("Unknown nwg-count D-Bus method: {}", method);
         }
     }
 }
