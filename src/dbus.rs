@@ -306,6 +306,22 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
     }
 }
 
+/// Emits CountChanged on the org.nwg.Notifications interface.
+///
+/// Best-effort: a failure here doesn't affect anything else; we log and move on.
+pub fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
+    let params = glib::Variant::from((count,));
+    if let Err(e) = connection.emit_signal(
+        None::<&str>,
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        "CountChanged",
+        Some(&params),
+    ) {
+        log::warn!("Failed to emit CountChanged: {}", e);
+    }
+}
+
 fn extract_urgency(hints: &glib::Variant) -> Urgency {
     // Look for "urgency" key in the a{sv} dict
     for i in 0..hints.n_children() {
