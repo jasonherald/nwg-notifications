@@ -152,7 +152,9 @@ impl PopupManager {
             let offset = POPUP_TOP_MARGIN + (i as i32) * (self.estimated_height() + POPUP_GAP);
             let is_top = matches!(
                 self.config.popup_position,
-                crate::config::PopupPosition::TopRight | crate::config::PopupPosition::TopLeft
+                crate::config::PopupPosition::TopRight
+                    | crate::config::PopupPosition::TopCenter
+                    | crate::config::PopupPosition::TopLeft
             );
             if is_top {
                 popup.win.set_margin(gtk4_layer_shell::Edge::Top, offset);

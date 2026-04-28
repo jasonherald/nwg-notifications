@@ -1,11 +1,13 @@
 use clap::{Parser, ValueEnum};
 
-/// Popup display position corner.
+/// Popup display position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum PopupPosition {
     TopRight,
+    TopCenter,
     TopLeft,
     BottomRight,
+    BottomCenter,
     BottomLeft,
 }
 
@@ -84,5 +86,18 @@ mod tests {
     fn wm_flag_default_none() {
         let config = NotificationConfig::parse_from(["test"]);
         assert_eq!(config.wm, None);
+    }
+
+    #[test]
+    fn popup_position_top_center() {
+        let config = NotificationConfig::parse_from(["test", "--popup-position", "top-center"]);
+        assert_eq!(config.popup_position, PopupPosition::TopCenter);
+    }
+
+    #[test]
+    fn popup_position_bottom_center() {
+        let config =
+            NotificationConfig::parse_from(["test", "--popup-position", "bottom-center"]);
+        assert_eq!(config.popup_position, PopupPosition::BottomCenter);
     }
 }
