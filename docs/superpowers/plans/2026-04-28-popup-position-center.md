@@ -46,15 +46,22 @@ git commit -m "docs: implementation plan for 6-position popup placement (#10)"
 
 Expected: one commit on the branch, the plan file tracked.
 
-- [ ] **Baseline build + tests pass before any change**
+- [ ] **Baseline full cargo gambit before any change**
 
-Run:
+Same battery CI runs — establish that `main` is green so any later failure is attributable to our change, not pre-existing breakage.
+
 ```bash
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo deny check
+cargo audit
 ```
-Expected: all green. If anything fails on `main`, stop — the plan assumes a healthy baseline.
+
+Or equivalently: `make lint`.
+
+Expected: every step exits 0. `cargo deny` may print pre-existing warnings about stale `deny.toml` entries (unmatched license allowances or skips) — those are non-blocking and out of scope for this plan; note them but don't fix them here. Anything that actually fails on `main` is a stop-and-ask: don't proceed, the baseline is broken.
 
 ---
 
