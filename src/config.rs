@@ -96,8 +96,7 @@ mod tests {
 
     #[test]
     fn popup_position_bottom_center() {
-        let config =
-            NotificationConfig::parse_from(["test", "--popup-position", "bottom-center"]);
+        let config = NotificationConfig::parse_from(["test", "--popup-position", "bottom-center"]);
         assert_eq!(config.popup_position, PopupPosition::BottomCenter);
     }
 }

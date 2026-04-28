@@ -110,28 +110,40 @@ mod tests {
     #[test]
     fn anchors_top_right() {
         let a = popup_anchors(PopupPosition::TopRight);
-        assert_eq!((a.top, a.bottom, a.left, a.right), (true, false, false, true));
+        assert_eq!(
+            (a.top, a.bottom, a.left, a.right),
+            (true, false, false, true)
+        );
         assert!(!a.horizontally_centered);
     }
 
     #[test]
     fn anchors_top_left() {
         let a = popup_anchors(PopupPosition::TopLeft);
-        assert_eq!((a.top, a.bottom, a.left, a.right), (true, false, true, false));
+        assert_eq!(
+            (a.top, a.bottom, a.left, a.right),
+            (true, false, true, false)
+        );
         assert!(!a.horizontally_centered);
     }
 
     #[test]
     fn anchors_bottom_right() {
         let a = popup_anchors(PopupPosition::BottomRight);
-        assert_eq!((a.top, a.bottom, a.left, a.right), (false, true, false, true));
+        assert_eq!(
+            (a.top, a.bottom, a.left, a.right),
+            (false, true, false, true)
+        );
         assert!(!a.horizontally_centered);
     }
 
     #[test]
     fn anchors_bottom_left() {
         let a = popup_anchors(PopupPosition::BottomLeft);
-        assert_eq!((a.top, a.bottom, a.left, a.right), (false, true, true, false));
+        assert_eq!(
+            (a.top, a.bottom, a.left, a.right),
+            (false, true, true, false)
+        );
         assert!(!a.horizontally_centered);
     }
 
@@ -140,7 +152,10 @@ mod tests {
         // Centered: anchor only the top edge — gtk4-layer-shell centers the
         // surface horizontally when neither left nor right is anchored.
         let a = popup_anchors(PopupPosition::TopCenter);
-        assert_eq!((a.top, a.bottom, a.left, a.right), (true, false, false, false));
+        assert_eq!(
+            (a.top, a.bottom, a.left, a.right),
+            (true, false, false, false)
+        );
         assert!(a.horizontally_centered);
     }
 
