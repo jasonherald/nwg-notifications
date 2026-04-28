@@ -518,11 +518,23 @@ Run: `~/.cargo/bin/nwg-notifications --help 2>&1 | grep -A1 popup-position`
 
 Expected: the `popup-position` line lists `top-center` and `bottom-center` among the accepted values. If they aren't there, the wrong binary got installed — investigate before continuing.
 
-- [ ] **Step 3: Stop any running daemon so the new binary takes over on next notification**
+- [ ] **Step 3: (Usually skip) Restart the daemon only if needed**
 
-Run: `pkill -f nwg-notifications || true`
+D-Bus auto-activates the freshly-installed binary on the next `notify-send` *for the next, fresh activation*. If the user already has a long-running daemon from session startup, that older daemon will keep handling notifications until it exits.
 
-(D-Bus auto-activates the new binary on the next `notify-send`.)
+If the change is in code paths the live daemon won't pick up via D-Bus alone (e.g. CLI-flag-driven behavior like this PR's `--popup-position`), the user should restart it themselves so the new flag actually takes effect. If you need to do it programmatically:
+
+```bash
+# DO NOT use `pkill -f nwg-notifications` — it self-matches the bash subprocess
+# AND kills the live daemon that waybar signals on click (waybar uses
+# `pkill -f -38 nwg-notifications`, leaving waybar dead afterwards). Use pidof.
+kill "$(pidof nwg-notifications)" 2>/dev/null || true
+# Restart the way autostart does, so it lands in the right systemd user slice:
+uwsm-app -- nwg-notifications --persist >/dev/null 2>&1 &
+disown
+```
+
+Better: tell the user to restart their session daemon themselves (waybar reload, `pkill` from their shell, etc.) — they know their setup.
 
 - [ ] **Step 4: Hand off to the user for smoke testing — STOP HERE**
 
