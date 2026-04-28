@@ -34,3 +34,12 @@ own repo + crates.io crate.
   the existing four corners. Centered placements anchor only the top or
   bottom edge; gtk4-layer-shell centers the surface horizontally on the
   unanchored axis. (#10)
+- Pending notification count IPC for nwg-panel and similar consumers (#9):
+  - New `org.nwg.Notifications` D-Bus interface with `GetCount() -> u32`
+    method and `CountChanged(u32)` signal (delta-only; emits when the count
+    actually changes).
+  - `count: usize` field added to the waybar status JSON at
+    `$XDG_RUNTIME_DIR/mac-notifications-status.json`.
+  - `nwg-notifications --count` CLI subcommand that queries the running
+    daemon over D-Bus and prints the count to stdout (uses `NO_AUTO_START`,
+    so it never spawns a daemon).
