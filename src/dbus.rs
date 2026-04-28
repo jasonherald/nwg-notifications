@@ -200,7 +200,7 @@ fn handle_nwg_count_method(
 ) {
     match method {
         "GetCount" => {
-            let count = state.borrow().unread_count() as u32;
+            let count = unread_count_to_u32(state.borrow().unread_count());
             let result = glib::Variant::from((count,));
             invocation.return_value(Some(&result));
         }
@@ -308,6 +308,21 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
     ) {
         log::warn!("Failed to emit ActionInvoked: {}", e);
     }
+}
+
+/// Converts a usize unread count to the u32 expected by the
+/// `org.nwg.Notifications` wire format. usize on 64-bit hosts is u64, so
+/// in theory a count could exceed u32::MAX; in practice `max_history`
+/// caps that long before the protocol cares. Logs and clamps to
+/// `u32::MAX` if it ever does happen rather than silently truncating.
+pub fn unread_count_to_u32(unread: usize) -> u32 {
+    u32::try_from(unread).unwrap_or_else(|_| {
+        log::error!(
+            "Unread count {} exceeds u32::MAX; clamping for D-Bus payload",
+            unread
+        );
+        u32::MAX
+    })
 }
 
 /// Timeout for the `--count` CLI's D-Bus call, in milliseconds.

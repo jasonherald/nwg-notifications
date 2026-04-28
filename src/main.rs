@@ -178,8 +178,9 @@ fn build_state_change_callback(
     let last_emitted_count: Rc<Cell<u32>> = Rc::new(Cell::new(0));
     Rc::new(move || {
         let s = state_sync.borrow();
-        let count = s.unread_count() as u32;
-        waybar::update_status(s.unread_count(), s.dnd);
+        let unread = s.unread_count();
+        let count = dbus::unread_count_to_u32(unread);
+        waybar::update_status(unread, s.dnd);
         if persist {
             persistence::save_history(&history_path, &s.history);
         }
