@@ -136,9 +136,25 @@ mod tests {
     }
 
     #[test]
-    fn popup_width_accepts_in_range_value() {
-        let config = NotificationConfig::parse_from(["test", "--popup-width", "500"]);
-        assert_eq!(config.popup_width, 500);
+    fn popup_width_accepts_mid_range_value() {
+        let mid =
+            (crate::ui::constants::POPUP_WIDTH_MIN + crate::ui::constants::POPUP_WIDTH_MAX) / 2;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &mid.to_string()]);
+        assert_eq!(config.popup_width, mid);
+    }
+
+    #[test]
+    fn popup_width_accepts_inclusive_minimum() {
+        let min = crate::ui::constants::POPUP_WIDTH_MIN;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &min.to_string()]);
+        assert_eq!(config.popup_width, min);
+    }
+
+    #[test]
+    fn popup_width_accepts_inclusive_maximum() {
+        let max = crate::ui::constants::POPUP_WIDTH_MAX;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &max.to_string()]);
+        assert_eq!(config.popup_width, max);
     }
 
     #[test]
