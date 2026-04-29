@@ -46,6 +46,8 @@ own repo + crates.io crate.
 - `--popup-width <px>` flag controls popup window width. Defaults to 380px;
   range 100..=2000 enforced at parse time. Applied per-popup so every
   popup picks up the configured width, not just the first. (#11)
+- `--panel-width <px>` flag controls history panel width. Defaults to 380px;
+  range 200..=2000 enforced at parse time. (#12)
 
 ### Fixed
 

@@ -35,8 +35,16 @@ pub const POPUP_SUMMARY_CHARS: i32 = 40;
 /// Max chars for popup body text.
 pub const POPUP_BODY_CHARS: i32 = 50;
 
-/// Width of the notification history panel.
-pub const PANEL_WIDTH: i32 = 380;
+/// Minimum accepted value for the `--panel-width` CLI flag.
+pub const PANEL_WIDTH_MIN: i32 = 200;
+
+/// Maximum accepted value for the `--panel-width` CLI flag.
+pub const PANEL_WIDTH_MAX: i32 = 2000;
+
+/// Default width of the notification history panel. Overridable via the
+/// `--panel-width` CLI flag (validated against
+/// `PANEL_WIDTH_MIN..=PANEL_WIDTH_MAX` at parse time).
+pub const PANEL_WIDTH_DEFAULT: i32 = 380;
 
 /// Panel slide animation duration in ms.
 pub const PANEL_REVEAL_DURATION_MS: u32 = 200;
