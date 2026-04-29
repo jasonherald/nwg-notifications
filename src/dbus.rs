@@ -165,6 +165,10 @@ fn handle_method(
         "GetServerInformation" => handle_server_info(invocation),
         _ => {
             log::warn!("Unknown D-Bus method: {}", method);
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod",
+                &format!("Unknown method: {method}"),
+            );
         }
     }
 }
