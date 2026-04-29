@@ -1,3 +1,4 @@
+use crate::ui::constants::{POPUP_WIDTH_DEFAULT, POPUP_WIDTH_MAX, POPUP_WIDTH_MIN};
 use clap::{Parser, ValueEnum};
 
 /// Popup display position.
@@ -22,6 +23,16 @@ pub struct NotificationConfig {
     /// Default popup timeout in ms (macOS uses ~7 seconds)
     #[arg(long, default_value_t = 7000)]
     pub popup_timeout: u64,
+
+    /// Popup window width in pixels. Must be within
+    /// `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`; out-of-range values are rejected
+    /// at parse time.
+    #[arg(
+        long,
+        value_parser = clap::value_parser!(i32).range((POPUP_WIDTH_MIN as i64)..=(POPUP_WIDTH_MAX as i64)),
+        default_value_t = POPUP_WIDTH_DEFAULT,
+    )]
+    pub popup_width: i32,
 
     /// Maximum simultaneous popups
     #[arg(long, default_value_t = 5)]
@@ -115,5 +126,56 @@ mod tests {
     fn count_flag_set() {
         let config = NotificationConfig::parse_from(["test", "--count"]);
         assert!(config.count);
+    }
+
+    #[test]
+    fn popup_width_defaults_to_constant() {
+        let config = NotificationConfig::parse_from(["test"]);
+        assert_eq!(
+            config.popup_width,
+            crate::ui::constants::POPUP_WIDTH_DEFAULT
+        );
+    }
+
+    #[test]
+    fn popup_width_accepts_mid_range_value() {
+        let mid =
+            (crate::ui::constants::POPUP_WIDTH_MIN + crate::ui::constants::POPUP_WIDTH_MAX) / 2;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &mid.to_string()]);
+        assert_eq!(config.popup_width, mid);
+    }
+
+    #[test]
+    fn popup_width_accepts_inclusive_minimum() {
+        let min = crate::ui::constants::POPUP_WIDTH_MIN;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &min.to_string()]);
+        assert_eq!(config.popup_width, min);
+    }
+
+    #[test]
+    fn popup_width_accepts_inclusive_maximum() {
+        let max = crate::ui::constants::POPUP_WIDTH_MAX;
+        let config = NotificationConfig::parse_from(["test", "--popup-width", &max.to_string()]);
+        assert_eq!(config.popup_width, max);
+    }
+
+    #[test]
+    fn popup_width_rejects_below_minimum() {
+        let below = (crate::ui::constants::POPUP_WIDTH_MIN - 1).to_string();
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", &below]);
+        assert!(
+            result.is_err(),
+            "expected --popup-width={below} to be rejected"
+        );
+    }
+
+    #[test]
+    fn popup_width_rejects_above_maximum() {
+        let above = (crate::ui::constants::POPUP_WIDTH_MAX + 1).to_string();
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", &above]);
+        assert!(
+            result.is_err(),
+            "expected --popup-width={above} to be rejected"
+        );
     }
 }
