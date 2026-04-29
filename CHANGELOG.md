@@ -21,7 +21,6 @@ own repo + crates.io crate.
 
 - Dependency: `nwg-common` now consumed from crates.io at `"0.3"` rather than
   as a workspace path dependency.
-- Bumped `nwg-common` to `0.3.1`.
 - D-Bus service file now ships as a committed template
   (`data/org.freedesktop.Notifications.service.in`) that `make install-dbus`
   substitutes `@BIN_PATH@` in, rather than being generated via `echo` at
