@@ -133,6 +133,7 @@ fn activate_notifications(
         &state,
         on_panel_click,
         Rc::clone(&on_state_change),
+        config.panel_width,
     )));
 
     // D-Bus callbacks

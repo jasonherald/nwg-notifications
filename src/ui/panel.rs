@@ -1,4 +1,4 @@
-use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH_DEFAULT};
+use super::constants::PANEL_REVEAL_DURATION_MS;
 use super::panel_content;
 use crate::state::NotificationState;
 use gtk4::prelude::*;
@@ -28,6 +28,7 @@ impl NotificationPanel {
         state: &Rc<RefCell<NotificationState>>,
         on_notification_click: Rc<dyn Fn(u32)>,
         on_state_change: Rc<dyn Fn()>,
+        panel_width: i32,
     ) -> Self {
         // One transparent backdrop per connected monitor — catches clicks
         // outside the panel on any output (issue #55).
@@ -41,7 +42,7 @@ impl NotificationPanel {
         // Panel window
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("notification-panel-window");
-        win.set_width_request(PANEL_WIDTH_DEFAULT);
+        win.set_width_request(panel_width);
         setup_panel_window(&win);
 
         // Revealer for slide animation
@@ -54,7 +55,7 @@ impl NotificationPanel {
         // Panel content container (inside revealer)
         let panel_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         panel_box.add_css_class("notification-panel");
-        panel_box.set_width_request(PANEL_WIDTH_DEFAULT);
+        panel_box.set_width_request(panel_width);
         revealer.set_child(Some(&panel_box));
 
         // Scrolled list (created before header so Clear All can reference it)
