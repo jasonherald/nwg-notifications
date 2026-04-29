@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust, `clap` (derive + range value_parser), gtk4 widget sizing.
 
-**Tracks:** Closes [#12](https://github.com/jasonherald/notifications/issues/12). After this lands, all four child issues of the [nwg-shell-config integration epic (#8)](https://github.com/jasonherald/nwg-notifications/issues/8) are done — only deferred backlog (`#16` D-Bus integration tests) remains.
+**Tracks:** Closes [#12](https://github.com/jasonherald/nwg-notifications/issues/12). After this lands, all four child issues of the [nwg-shell-config integration epic (#8)](https://github.com/jasonherald/nwg-notifications/issues/8) are done — only deferred backlog (`#16` D-Bus integration tests) remains.
 
 ---
 
