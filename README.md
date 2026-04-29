@@ -1,5 +1,8 @@
 # nwg-notifications
 
+[![crates.io](https://img.shields.io/crates/v/nwg-notifications.svg)](https://crates.io/crates/nwg-notifications)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A D-Bus notification daemon and notification center for [Hyprland](https://hyprland.org/) and [Sway](https://swaywm.org/), written in Rust.
 
 Claims `org.freedesktop.Notifications`, shows popup toasts, and ships a slide-out history panel with Do-Not-Disturb controls and optional waybar integration. Built alongside [`nwg-dock`](https://github.com/jasonherald/nwg-dock) and [`nwg-drawer`](https://github.com/jasonherald/nwg-drawer) to replace [mako](https://github.com/emersion/mako) in the mac-doc-hyprland stack, but runs standalone.
@@ -41,9 +44,17 @@ sudo apt install libgtk-4-dev libgtk4-layer-shell-dev
 sudo dnf install gtk4-devel gtk4-layer-shell-devel
 ```
 
-### `make install` — three invocations for the binary + a user-scope `install-dbus`
+### From crates.io (recommended for end users)
 
-The binary install has three invocations. The **D-Bus service file always lands in user-scope** (`~/.local/share/dbus-1/services/`) regardless of `PREFIX` — D-Bus user services are per-user by convention, and installing the service file system-wide would break auto-activation for other users on the same machine.
+```bash
+cargo install nwg-notifications
+```
+
+Lands the binary at `~/.cargo/bin/nwg-notifications`. `cargo install` doesn't ship the D-Bus service file — you'll need to write that yourself (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
+
+### `make install` — for source builds, distro packagers, and the `install-dbus` helper
+
+The Makefile install path drops both the binary and the D-Bus service file (the latter always to user-scope, regardless of `PREFIX` — D-Bus user services are per-user by convention).
 
 **Default — system-wide binary + user-scope service:**
 
@@ -69,14 +80,6 @@ make install-dbus
 sudo make install PREFIX=/usr
 make install-dbus
 ```
-
-### From crates.io
-
-```bash
-cargo install nwg-notifications
-```
-
-`cargo install` only installs the binary. You'll need to write the D-Bus service file yourself (see [D-Bus service](#d-bus-service) below) — it's a ~5-line file pointing at `~/.cargo/bin/nwg-notifications`.
 
 ## Usage
 
