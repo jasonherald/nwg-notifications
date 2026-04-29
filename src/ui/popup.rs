@@ -1,6 +1,6 @@
 use super::constants::{
     POPUP_BODY_CHARS, POPUP_GAP, POPUP_ICON_SIZE, POPUP_MAX_BODY_LINES, POPUP_PADDING,
-    POPUP_SUMMARY_CHARS, POPUP_TOP_MARGIN, POPUP_WIDTH,
+    POPUP_SUMMARY_CHARS, POPUP_TOP_MARGIN, POPUP_WIDTH_DEFAULT,
 };
 use super::window;
 use crate::config::NotificationConfig;
@@ -62,8 +62,8 @@ impl PopupManager {
         let win = gtk4::ApplicationWindow::new(&self.app);
         window::setup_popup_window(&win, self.config.popup_position, top_offset);
         win.add_css_class("notification-popup-window");
-        win.set_width_request(POPUP_WIDTH);
-        win.set_default_size(POPUP_WIDTH, -1);
+        win.set_width_request(POPUP_WIDTH_DEFAULT);
+        win.set_default_size(POPUP_WIDTH_DEFAULT, -1);
 
         // Show on the focused monitor
         if let Some(mon) = focused_gdk_monitor(&*self.compositor) {
