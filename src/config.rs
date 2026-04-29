@@ -24,7 +24,9 @@ pub struct NotificationConfig {
     #[arg(long, default_value_t = 7000)]
     pub popup_timeout: u64,
 
-    /// Popup window width in pixels. Clamped to `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`.
+    /// Popup window width in pixels. Must be within
+    /// `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`; out-of-range values are rejected
+    /// at parse time.
     #[arg(
         long,
         value_parser = clap::value_parser!(i32).range((POPUP_WIDTH_MIN as i64)..=(POPUP_WIDTH_MAX as i64)),
