@@ -11,25 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
-## [0.3.0] — Unreleased
+## [0.3.1] — 2026-04-28
 
-First standalone release. Extracts the D-Bus notification daemon from
-[`mac-doc-hyprland`](https://github.com/jasonherald/mac-doc-hyprland) as its
-own repo + crates.io crate.
-
-### Changed
-
-- Dependency: `nwg-common` now consumed from crates.io at `"0.3"` rather than
-  as a workspace path dependency.
-- D-Bus service file now ships as a committed template
-  (`data/org.freedesktop.Notifications.service.in`) that `make install-dbus`
-  substitutes `@BIN_PATH@` in, rather than being generated via `echo` at
-  install time. Easier to inspect and version-control.
+Closes the [nwg-shell-config integration epic](https://github.com/jasonherald/nwg-notifications/issues/8) on the daemon side: adds the flags and IPC surface that `nwg-shell-config` needs to drive `nwg-notifications` directly (replacing swaync), plus a small D-Bus protocol fix surfaced during review.
 
 ### Added
 
-- crates.io metadata (`description`, `readme`, `keywords`, `categories`,
-  `repository`) wired up.
 - `--popup-position` accepts `top-center` and `bottom-center` in addition to
   the existing four corners. Centered placements anchor only the top or
   bottom edge; gtk4-layer-shell centers the surface horizontally on the
@@ -55,4 +42,24 @@ own repo + crates.io crate.
   `org.freedesktop.DBus.Error.UnknownMethod` for unknown methods instead of
   silently logging, so introspection-driven clients see the error
   immediately instead of waiting out their reply timeout. Mirrors the fix
-  for the nwg-count handler in #14. (#15)
+  applied to the new `org.nwg.Notifications` handler. (#15)
+
+## [0.3.0] — 2026-04-21
+
+First standalone release. Extracts the D-Bus notification daemon from
+[`mac-doc-hyprland`](https://github.com/jasonherald/mac-doc-hyprland) as its
+own repo + crates.io crate.
+
+### Changed
+
+- Dependency: `nwg-common` now consumed from crates.io at `"0.3"` rather than
+  as a workspace path dependency.
+- D-Bus service file now ships as a committed template
+  (`data/org.freedesktop.Notifications.service.in`) that `make install-dbus`
+  substitutes `@BIN_PATH@` in, rather than being generated via `echo` at
+  install time. Easier to inspect and version-control.
+
+### Added
+
+- crates.io metadata (`description`, `readme`, `keywords`, `categories`,
+  `repository`) wired up.
