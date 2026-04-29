@@ -481,7 +481,7 @@ Don't run `make install-dbus` — D-Bus service file unchanged.
 - [ ] **Step 2: Restart the user's session daemon**
 
 ```bash
-kill "$(pidof nwg-notifications)" 2>/dev/null || true
+kill $(pidof nwg-notifications) 2>/dev/null || true
 sleep 0.5
 uwsm-app -- nwg-notifications --persist >/dev/null 2>&1 &
 disown
@@ -497,7 +497,7 @@ Tell the user (verbatim or close):
 > Installed and restarted the daemon. Smoke-test paths:
 >
 > 1. Click the waybar bell icon to toggle the panel — verify it slides in at the existing 380px width.
-> 2. Restart with a wider panel by running `kill "$(pidof nwg-notifications)" 2>/dev/null && sleep 0.5 && nwg-notifications --persist --panel-width 600 &`. Send a test notification (`notify-send "test" "msg"`), then toggle the panel — should be visibly wider.
+> 2. Restart with a wider panel by running `kill $(pidof nwg-notifications) 2>/dev/null && sleep 0.5 && nwg-notifications --persist --panel-width 600 &`. Send a test notification (`notify-send "test" "msg"`), then toggle the panel — should be visibly wider.
 > 3. `nwg-notifications --panel-width 100` should reject (below 200 minimum). `nwg-notifications --panel-width 5000` should reject. Both with clap range messages.
 > 4. Restart back to default (`uwsm-app -- nwg-notifications --persist`) before continuing.
 >
