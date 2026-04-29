@@ -399,3 +399,31 @@ fn extract_string_hint(hints: &glib::Variant, key_name: &str) -> Option<String> 
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unread_count_to_u32_passes_through_small_values() {
+        assert_eq!(unread_count_to_u32(0), 0);
+        assert_eq!(unread_count_to_u32(1), 1);
+        assert_eq!(unread_count_to_u32(42), 42);
+    }
+
+    #[test]
+    fn unread_count_to_u32_passes_through_u32_max() {
+        // u32::MAX as usize is always representable on every supported target.
+        assert_eq!(unread_count_to_u32(u32::MAX as usize), u32::MAX);
+    }
+
+    /// Overflow only exists on targets where `usize > u32` (i.e. 64-bit).
+    /// On 32-bit hosts `usize` *is* `u32`, so `try_from` can't fail and this
+    /// test would be tautological.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn unread_count_to_u32_clamps_on_overflow() {
+        assert_eq!(unread_count_to_u32(u32::MAX as usize + 1), u32::MAX);
+        assert_eq!(unread_count_to_u32(usize::MAX), u32::MAX);
+    }
+}
