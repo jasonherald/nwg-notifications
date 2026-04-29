@@ -1,3 +1,4 @@
+use crate::ui::constants::POPUP_WIDTH_DEFAULT;
 use clap::{Parser, ValueEnum};
 
 /// Popup display position.
@@ -22,6 +23,14 @@ pub struct NotificationConfig {
     /// Default popup timeout in ms (macOS uses ~7 seconds)
     #[arg(long, default_value_t = 7000)]
     pub popup_timeout: u64,
+
+    /// Popup window width in pixels. Clamped to 100..=2000.
+    #[arg(
+        long,
+        value_parser = clap::value_parser!(i32).range(100..=2000),
+        default_value_t = POPUP_WIDTH_DEFAULT,
+    )]
+    pub popup_width: i32,
 
     /// Maximum simultaneous popups
     #[arg(long, default_value_t = 5)]
@@ -115,5 +124,35 @@ mod tests {
     fn count_flag_set() {
         let config = NotificationConfig::parse_from(["test", "--count"]);
         assert!(config.count);
+    }
+
+    #[test]
+    fn popup_width_defaults_to_constant() {
+        let config = NotificationConfig::parse_from(["test"]);
+        assert_eq!(
+            config.popup_width,
+            crate::ui::constants::POPUP_WIDTH_DEFAULT
+        );
+    }
+
+    #[test]
+    fn popup_width_accepts_in_range_value() {
+        let config = NotificationConfig::parse_from(["test", "--popup-width", "500"]);
+        assert_eq!(config.popup_width, 500);
+    }
+
+    #[test]
+    fn popup_width_rejects_below_minimum() {
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", "50"]);
+        assert!(result.is_err(), "expected --popup-width=50 to be rejected");
+    }
+
+    #[test]
+    fn popup_width_rejects_above_maximum() {
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", "5000"]);
+        assert!(
+            result.is_err(),
+            "expected --popup-width=5000 to be rejected"
+        );
     }
 }
