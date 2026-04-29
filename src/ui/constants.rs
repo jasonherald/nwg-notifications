@@ -1,7 +1,14 @@
 //! UI layout constants for the notification daemon.
 
+/// Minimum accepted value for the `--popup-width` CLI flag.
+pub const POPUP_WIDTH_MIN: i32 = 100;
+
+/// Maximum accepted value for the `--popup-width` CLI flag.
+pub const POPUP_WIDTH_MAX: i32 = 2000;
+
 /// Default width of popup notification windows. Overridable via the
-/// `--popup-width` CLI flag (clamped to 100..=2000 at parse time).
+/// `--popup-width` CLI flag (clamped to `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`
+/// at parse time).
 pub const POPUP_WIDTH_DEFAULT: i32 = 380;
 
 /// Margin from the top edge of screen.

@@ -1,4 +1,4 @@
-use crate::ui::constants::POPUP_WIDTH_DEFAULT;
+use crate::ui::constants::{POPUP_WIDTH_DEFAULT, POPUP_WIDTH_MAX, POPUP_WIDTH_MIN};
 use clap::{Parser, ValueEnum};
 
 /// Popup display position.
@@ -24,10 +24,10 @@ pub struct NotificationConfig {
     #[arg(long, default_value_t = 7000)]
     pub popup_timeout: u64,
 
-    /// Popup window width in pixels. Clamped to 100..=2000.
+    /// Popup window width in pixels. Clamped to `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`.
     #[arg(
         long,
-        value_parser = clap::value_parser!(i32).range(100..=2000),
+        value_parser = clap::value_parser!(i32).range((POPUP_WIDTH_MIN as i64)..=(POPUP_WIDTH_MAX as i64)),
         default_value_t = POPUP_WIDTH_DEFAULT,
     )]
     pub popup_width: i32,
@@ -143,16 +143,21 @@ mod tests {
 
     #[test]
     fn popup_width_rejects_below_minimum() {
-        let result = NotificationConfig::try_parse_from(["test", "--popup-width", "50"]);
-        assert!(result.is_err(), "expected --popup-width=50 to be rejected");
+        let below = (crate::ui::constants::POPUP_WIDTH_MIN - 1).to_string();
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", &below]);
+        assert!(
+            result.is_err(),
+            "expected --popup-width={below} to be rejected"
+        );
     }
 
     #[test]
     fn popup_width_rejects_above_maximum() {
-        let result = NotificationConfig::try_parse_from(["test", "--popup-width", "5000"]);
+        let above = (crate::ui::constants::POPUP_WIDTH_MAX + 1).to_string();
+        let result = NotificationConfig::try_parse_from(["test", "--popup-width", &above]);
         assert!(
             result.is_err(),
-            "expected --popup-width=5000 to be rejected"
+            "expected --popup-width={above} to be rejected"
         );
     }
 }
