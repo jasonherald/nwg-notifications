@@ -1,4 +1,4 @@
-use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH};
+use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH_DEFAULT};
 use super::panel_content;
 use crate::state::NotificationState;
 use gtk4::prelude::*;
@@ -41,7 +41,7 @@ impl NotificationPanel {
         // Panel window
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("notification-panel-window");
-        win.set_width_request(PANEL_WIDTH);
+        win.set_width_request(PANEL_WIDTH_DEFAULT);
         setup_panel_window(&win);
 
         // Revealer for slide animation
@@ -54,7 +54,7 @@ impl NotificationPanel {
         // Panel content container (inside revealer)
         let panel_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         panel_box.add_css_class("notification-panel");
-        panel_box.set_width_request(PANEL_WIDTH);
+        panel_box.set_width_request(PANEL_WIDTH_DEFAULT);
         revealer.set_child(Some(&panel_box));
 
         // Scrolled list (created before header so Clear All can reference it)
