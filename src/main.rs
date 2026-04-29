@@ -16,12 +16,26 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use nwg_common::desktop::dirs::get_app_dirs;
 use nwg_common::singleton;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 fn main() {
     nwg_common::process::handle_dump_args();
     let config = NotificationConfig::parse();
+
+    if config.count {
+        match dbus::query_count_via_dbus() {
+            Ok(count) => {
+                println!("{}", count);
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Failed to query count: {}", e);
+                eprintln!("(is the nwg-notifications daemon running?)");
+                std::process::exit(1);
+            }
+        }
+    }
 
     if config.debug {
         env_logger::Builder::from_default_env()
@@ -147,6 +161,13 @@ fn activate_notifications(
     );
 }
 
+/// Returns true if the count has changed since `last_emitted` and should
+/// trigger a CountChanged signal. Pure helper to keep the predicate
+/// unit-testable.
+fn should_emit_count_changed(last_emitted: u32, current: u32) -> bool {
+    last_emitted != current
+}
+
 /// Creates the shared on_state_change callback that persists history and updates waybar.
 fn build_state_change_callback(
     state: &Rc<RefCell<NotificationState>>,
@@ -154,11 +175,20 @@ fn build_state_change_callback(
     history_path: std::path::PathBuf,
 ) -> Rc<dyn Fn()> {
     let state_sync = Rc::clone(state);
+    let last_emitted_count: Rc<Cell<u32>> = Rc::new(Cell::new(0));
     Rc::new(move || {
         let s = state_sync.borrow();
-        waybar::update_status(s.unread_count(), s.dnd);
+        let unread = s.unread_count();
+        let count = dbus::unread_count_to_u32(unread);
+        waybar::update_status(unread, s.dnd);
         if persist {
             persistence::save_history(&history_path, &s.history);
+        }
+        if should_emit_count_changed(last_emitted_count.get(), count)
+            && let Some(conn) = &s.dbus_connection
+        {
+            last_emitted_count.set(count);
+            dbus::emit_count_changed(conn, count);
         }
     })
 }
@@ -211,4 +241,22 @@ fn build_on_notify_callback(
 
         on_change_notify();
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_changed_predicate_emits_on_delta() {
+        assert!(should_emit_count_changed(0, 1));
+        assert!(should_emit_count_changed(5, 4));
+        assert!(should_emit_count_changed(2, 0));
+    }
+
+    #[test]
+    fn count_changed_predicate_skips_when_equal() {
+        assert!(!should_emit_count_changed(0, 0));
+        assert!(!should_emit_count_changed(7, 7));
+    }
 }

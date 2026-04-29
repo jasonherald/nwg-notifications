@@ -141,6 +141,46 @@ Add to `~/.config/waybar/config.jsonc`:
 
 The daemon writes its current state to `$XDG_RUNTIME_DIR/mac-notifications-status.json` and signals waybar (`SIGRTMIN+11`, which waybar receives as `signal: 11`) whenever the state changes — no polling.
 
+## Querying notification count
+
+Three mechanisms expose the current pending (unread) count for status-bar
+widgets, scripts, and external panels (e.g. nwg-panel):
+
+### CLI
+
+```bash
+nwg-notifications --count
+# Prints the integer count to stdout. Exits 1 with a stderr error if no
+# daemon is running (NO_AUTO_START — won't spawn a daemon).
+```
+
+### D-Bus
+
+```bash
+gdbus call --session \
+  --dest org.nwg.Notifications \
+  --object-path /org/nwg/Notifications \
+  --method org.nwg.Notifications.GetCount
+```
+
+For push-mode subscribers, listen on the `CountChanged` signal:
+
+```bash
+dbus-monitor --session "type='signal',interface='org.nwg.Notifications'"
+```
+
+The signal emits only when the count actually changes (delta-tracking),
+so subscribers don't receive spurious wakeups for no-op state mutations.
+
+### Status file
+
+The waybar status JSON includes a `count` field — useful when you already
+have `SIGRTMIN+11` wired up:
+
+```bash
+jq -r .count "$XDG_RUNTIME_DIR/mac-notifications-status.json"
+```
+
 ## Theming
 
 Styling is embedded via `include_str!`; there's no user-writable `notifications.css` today. If you need to customize appearance, fork the crate and edit `assets/notifications.css`, or open an issue to discuss exposing it.

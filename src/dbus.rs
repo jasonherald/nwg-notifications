@@ -45,6 +45,25 @@ const INTROSPECT_XML: &str = r#"
 </node>
 "#;
 
+/// D-Bus introspection XML for the nwg-specific count IPC interface.
+const NWG_COUNT_INTROSPECT_XML: &str = r#"
+<node>
+  <interface name="org.nwg.Notifications">
+    <method name="GetCount">
+      <arg name="count" type="u" direction="out"/>
+    </method>
+    <signal name="CountChanged">
+      <arg name="count" type="u"/>
+    </signal>
+  </interface>
+</node>
+"#;
+
+/// D-Bus name for the nwg-specific count IPC interface.
+pub const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
+/// D-Bus object path for the nwg-specific count IPC interface.
+pub const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
+
 /// Callback invoked when a new notification arrives via D-Bus.
 /// Implement this to show popups, update waybar, etc.
 pub type OnNotify = Rc<dyn Fn(&Notification)>;
@@ -55,14 +74,16 @@ pub type OnClose = Rc<dyn Fn(u32)>;
 /// Registers the notification D-Bus server on the session bus.
 ///
 /// Runs entirely on the glib main loop — no threads or async needed.
+/// Acquires both `org.freedesktop.Notifications` (the standard notification
+/// daemon interface) and `org.nwg.Notifications` (the nwg-specific count IPC).
 pub fn register_server(
     state: &Rc<RefCell<NotificationState>>,
     on_notify: OnNotify,
     on_close: OnClose,
 ) {
-    let state = Rc::clone(state);
-    let on_notify = Rc::clone(&on_notify);
-    let on_close = Rc::clone(&on_close);
+    let state_fdo = Rc::clone(state);
+    let on_notify_fdo = Rc::clone(&on_notify);
+    let on_close_fdo = Rc::clone(&on_close);
 
     gio::bus_own_name(
         gio::BusType::Session,
@@ -70,8 +91,8 @@ pub fn register_server(
         gio::BusNameOwnerFlags::REPLACE,
         move |connection, _name| {
             log::info!("Acquired D-Bus name: org.freedesktop.Notifications");
-            state.borrow_mut().dbus_connection = Some(connection.clone());
-            register_object(&connection, &state, &on_notify, &on_close);
+            state_fdo.borrow_mut().dbus_connection = Some(connection.clone());
+            register_object(&connection, &state_fdo, &on_notify_fdo, &on_close_fdo);
         },
         |_connection, _name| {
             log::debug!("D-Bus name acquired callback");
@@ -80,6 +101,23 @@ pub fn register_server(
             log::error!(
                 "Lost D-Bus name org.freedesktop.Notifications — is another daemon running?"
             );
+        },
+    );
+
+    let state_nwg = Rc::clone(state);
+    gio::bus_own_name(
+        gio::BusType::Session,
+        NWG_COUNT_BUS_NAME,
+        gio::BusNameOwnerFlags::REPLACE,
+        move |connection, _name| {
+            log::info!("Acquired D-Bus name: {}", NWG_COUNT_BUS_NAME);
+            register_nwg_count_object(&connection, &state_nwg);
+        },
+        |_connection, _name| {
+            log::debug!("nwg-count D-Bus name acquired callback");
+        },
+        |_connection, _name| {
+            log::error!("Lost D-Bus name {} — another daemon?", NWG_COUNT_BUS_NAME);
         },
     );
 }
@@ -127,6 +165,51 @@ fn handle_method(
         "GetServerInformation" => handle_server_info(invocation),
         _ => {
             log::warn!("Unknown D-Bus method: {}", method);
+        }
+    }
+}
+
+fn register_nwg_count_object(
+    connection: &gio::DBusConnection,
+    state: &Rc<RefCell<NotificationState>>,
+) {
+    let node_info = gio::DBusNodeInfo::for_xml(NWG_COUNT_INTROSPECT_XML)
+        .expect("Failed to parse nwg-count introspection XML");
+
+    let interface_info = node_info
+        .lookup_interface(NWG_COUNT_BUS_NAME)
+        .expect("nwg-count interface not found in XML");
+
+    let state = Rc::clone(state);
+
+    connection
+        .register_object(NWG_COUNT_OBJECT_PATH, &interface_info)
+        .method_call(
+            move |_conn, _sender, _path, _iface, method, _params, invocation| {
+                handle_nwg_count_method(method, invocation, &state);
+            },
+        )
+        .build()
+        .expect("Failed to register nwg-count D-Bus object");
+}
+
+fn handle_nwg_count_method(
+    method: &str,
+    invocation: gio::DBusMethodInvocation,
+    state: &Rc<RefCell<NotificationState>>,
+) {
+    match method {
+        "GetCount" => {
+            let count = unread_count_to_u32(state.borrow().unread_count());
+            let result = glib::Variant::from((count,));
+            invocation.return_value(Some(&result));
+        }
+        _ => {
+            log::warn!("Unknown nwg-count D-Bus method: {}", method);
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod",
+                &format!("Unknown method: {method}"),
+            );
         }
     }
 }
@@ -227,6 +310,69 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
     }
 }
 
+/// Converts a usize unread count to the u32 expected by the
+/// `org.nwg.Notifications` wire format. usize on 64-bit hosts is u64, so
+/// in theory a count could exceed u32::MAX; in practice `max_history`
+/// caps that long before the protocol cares. Logs and clamps to
+/// `u32::MAX` if it ever does happen rather than silently truncating.
+pub fn unread_count_to_u32(unread: usize) -> u32 {
+    u32::try_from(unread).unwrap_or_else(|_| {
+        log::error!(
+            "Unread count {} exceeds u32::MAX; clamping for D-Bus payload",
+            unread
+        );
+        u32::MAX
+    })
+}
+
+/// Timeout for the `--count` CLI's D-Bus call, in milliseconds.
+/// Local D-Bus calls to the running daemon are sub-millisecond when healthy;
+/// 2s is generous enough to absorb transient bus contention while keeping
+/// the CLI responsive when something is genuinely broken.
+const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
+
+/// Queries the running daemon's `GetCount()` method over the session bus
+/// and returns the unread count. Uses `NO_AUTO_START` so it never spawns
+/// a daemon — if no daemon is running, this returns an error.
+///
+/// Used by the `--count` CLI subcommand.
+pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
+    let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    let result = connection.call_sync(
+        Some(NWG_COUNT_BUS_NAME),
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        "GetCount",
+        None,
+        None,
+        gio::DBusCallFlags::NO_AUTO_START,
+        QUERY_COUNT_TIMEOUT_MS,
+        gio::Cancellable::NONE,
+    )?;
+    result.child_value(0).get::<u32>().ok_or_else(|| {
+        glib::Error::new(
+            gio::IOErrorEnum::InvalidData,
+            "GetCount returned unexpected payload type",
+        )
+    })
+}
+
+/// Emits CountChanged on the org.nwg.Notifications interface.
+///
+/// Best-effort: a failure here doesn't affect anything else; we log and move on.
+pub fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
+    let params = glib::Variant::from((count,));
+    if let Err(e) = connection.emit_signal(
+        None::<&str>,
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        "CountChanged",
+        Some(&params),
+    ) {
+        log::warn!("Failed to emit CountChanged: {}", e);
+    }
+}
+
 fn extract_urgency(hints: &glib::Variant) -> Urgency {
     // Look for "urgency" key in the a{sv} dict
     for i in 0..hints.n_children() {
@@ -252,4 +398,32 @@ fn extract_string_hint(hints: &glib::Variant, key_name: &str) -> Option<String> 
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unread_count_to_u32_passes_through_small_values() {
+        assert_eq!(unread_count_to_u32(0), 0);
+        assert_eq!(unread_count_to_u32(1), 1);
+        assert_eq!(unread_count_to_u32(42), 42);
+    }
+
+    #[test]
+    fn unread_count_to_u32_passes_through_u32_max() {
+        // u32::MAX as usize is always representable on every supported target.
+        assert_eq!(unread_count_to_u32(u32::MAX as usize), u32::MAX);
+    }
+
+    /// Overflow only exists on targets where `usize > u32` (i.e. 64-bit).
+    /// On 32-bit hosts `usize` *is* `u32`, so `try_from` can't fail and this
+    /// test would be tautological.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn unread_count_to_u32_clamps_on_overflow() {
+        assert_eq!(unread_count_to_u32(u32::MAX as usize + 1), u32::MAX);
+        assert_eq!(unread_count_to_u32(usize::MAX), u32::MAX);
+    }
 }
