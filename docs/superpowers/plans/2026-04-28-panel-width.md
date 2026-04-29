@@ -589,5 +589,5 @@ Reply protocol: inline replies for in-diff comments, single PR-level comment for
 
 - [ ] `--panel-width <px>` flag accepts integers, defaults to current behavior. — Task 2
 - [ ] Width is applied on every panel open, not just the first. — Task 3 (panel widget reads `panel_width` at construction; widget retains it for subsequent `present()` calls)
-- [ ] Reasonable bounds: clamped to 200..=2000; documented in `--help`. — Task 2 (via `value_parser!(i32).range(...)`)
+- [ ] Reasonable bounds: validated/rejected outside 200..=2000 at parse time; documented in `--help`. — Task 2 (via `value_parser!(i32).range(...)`)
 - [ ] CHANGELOG entry. — Task 4
