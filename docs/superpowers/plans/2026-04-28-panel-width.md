@@ -339,19 +339,19 @@ Replace the two `PANEL_WIDTH_DEFAULT` reads inside `new()` with `panel_width`:
         panel_box.set_width_request(panel_width);
 ```
 
-Drop `PANEL_WIDTH_DEFAULT` from the constants import at the top of the file:
+Drop `PANEL_WIDTH_DEFAULT` from the constants import at the top of the file. After Task 1 the import line reads:
 
 ```rust
-use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH};
+use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH_DEFAULT};
 ```
 
-becomes:
+After this task `PANEL_WIDTH_DEFAULT` is no longer referenced from this file, so the import collapses to a single-name form:
 
 ```rust
 use super::constants::PANEL_REVEAL_DURATION_MS;
 ```
 
-(Wait — the actual current state after Task 1 is `use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH_DEFAULT};`. After this task, `PANEL_WIDTH_DEFAULT` is no longer referenced from this file, so the import collapses to a single-name form. If the import block has been reformatted by Task 1's edit into the multi-line form, drop just the `PANEL_WIDTH_DEFAULT` entry.)
+(If `rustfmt` has wrapped the import into a multi-line form, drop just the `PANEL_WIDTH_DEFAULT` entry rather than rewriting the whole line.)
 
 - [ ] **Step 2: Update the call site in `src/main.rs`**
 
