@@ -208,7 +208,7 @@ Append to the bottom of the `#[cfg(test)] mod tests` block in `src/config.rs`:
 cargo test panel_width_ 2>&1 | tail -10
 ```
 
-Expected: compile error — `panel_width` field doesn't exist on `NotificationConfig`.
+Expected: compile failure (the tests won't compile until `panel_width` and any imports they reference are added). The proximate cause should be `panel_width` missing from `NotificationConfig`, but other identifiers introduced by these tests may surface first depending on rustc's diagnostic ordering — that's fine, the next step adds them.
 
 - [ ] **Step 3: Bring `PANEL_WIDTH_*` into scope**
 
