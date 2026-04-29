@@ -43,3 +43,14 @@ own repo + crates.io crate.
   - `nwg-notifications --count` CLI subcommand that queries the running
     daemon over D-Bus and prints the count to stdout (uses `NO_AUTO_START`,
     so it never spawns a daemon).
+- `--popup-width <px>` flag controls popup window width. Defaults to 380px;
+  range 100..=2000 enforced at parse time. Applied per-popup so every
+  popup picks up the configured width, not just the first. (#11)
+
+### Fixed
+
+- `org.freedesktop.Notifications` D-Bus handler now returns the standard
+  `org.freedesktop.DBus.Error.UnknownMethod` for unknown methods instead of
+  silently logging, so introspection-driven clients see the error
+  immediately instead of waiting out their reply timeout. Mirrors the fix
+  for the nwg-count handler in #14. (#15)
