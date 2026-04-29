@@ -16,7 +16,7 @@
 
 - **Modify:** `src/ui/constants.rs` — rename `PANEL_WIDTH` → `PANEL_WIDTH_DEFAULT`, add `PANEL_WIDTH_MIN: i32 = 200` and `PANEL_WIDTH_MAX: i32 = 2000`.
 - **Modify:** `src/config.rs` — add `panel_width: i32` field with `value_parser!(i32).range((MIN as i64)..=(MAX as i64))` and default `PANEL_WIDTH_DEFAULT`. Tests for default, mid-range, both inclusive endpoints, and `MIN-1`/`MAX+1` rejection (6 tests, mirroring the popup-width pattern).
-- **Modify:** `src/ui/panel.rs` — add `panel_width: i32` parameter to `NotificationPanel::new`; replace the two `PANEL_WIDTH` reads at lines 44 and 57 with the new parameter; drop `PANEL_WIDTH` from the constants import.
+- **Modify:** `src/ui/panel.rs` — add `panel_width: i32` parameter to `NotificationPanel::new`; replace the two `set_width_request(...)` calls in that function with the new parameter; drop `PANEL_WIDTH` from the constants import.
 - **Modify:** `src/main.rs` — `NotificationPanel::new` call gains `config.panel_width` as a fifth argument.
 - **Modify:** `CHANGELOG.md` — entry under unreleased `### Added`.
 
@@ -96,7 +96,7 @@ In the `use super::constants::{...}` line at the top, change `PANEL_WIDTH` to `P
 use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH_DEFAULT};
 ```
 
-In `NotificationPanel::new`, replace the two reads:
+In `NotificationPanel::new`, replace the two `set_width_request(...)` calls so they reference the renamed constant:
 
 ```rust
         win.set_width_request(PANEL_WIDTH_DEFAULT);
