@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
-## [Unreleased]
+## [0.3.2] — 2026-04-29
+
+Adds a live config update mechanism so consumers like `nwg-shell-config` can change runtime settings without restarting the daemon.
 
 ### Added
 
