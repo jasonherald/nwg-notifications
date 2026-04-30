@@ -24,6 +24,9 @@ pub struct NotificationPanel {
     config: Rc<RefCell<NotificationConfig>>,
     on_notification_click: Rc<dyn Fn(u32)>,
     on_state_change: Rc<dyn Fn()>,
+    /// Fired from `toggle()` on the hidden → visible transition. Wired in
+    /// `main.rs` to dismiss any visible popup toasts (#3).
+    on_panel_open: Rc<dyn Fn()>,
 }
 
 impl NotificationPanel {
@@ -34,6 +37,7 @@ impl NotificationPanel {
         config: &Rc<RefCell<NotificationConfig>>,
         on_notification_click: Rc<dyn Fn(u32)>,
         on_state_change: Rc<dyn Fn()>,
+        on_panel_open: Rc<dyn Fn()>,
     ) -> Self {
         let initial_width = config.borrow().panel_width;
         // One transparent backdrop per connected monitor — catches clicks
@@ -118,6 +122,7 @@ impl NotificationPanel {
             config: Rc::clone(config),
             on_notification_click,
             on_state_change,
+            on_panel_open,
         };
 
         panel.rebuild();
@@ -138,6 +143,12 @@ impl NotificationPanel {
         if self.revealer.reveals_child() {
             hide_panel(&self.revealer, &self.win, &self.backdrops);
         } else {
+            // Panel is going from hidden -> visible. Notify subscribers
+            // (PopupManager dismisses any visible popups so the panel
+            // and popups don't show the same notifications side-by-side
+            // — see #3).
+            (self.on_panel_open)();
+
             // Rebuild, show backdrops + window, then slide in
             let list = self.list_box.clone();
             let state = Rc::clone(&self.state);

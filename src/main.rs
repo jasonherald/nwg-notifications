@@ -172,12 +172,21 @@ fn activate_notifications(
 
     // Panel
     let on_panel_click = build_panel_click_callback(&state, compositor);
+    // Closing visible popups when the panel opens — see #3.
+    let on_panel_open: Rc<dyn Fn()> = {
+        let popup_mgr = Rc::clone(&popup_mgr);
+        let state = Rc::clone(&state);
+        Rc::new(move || {
+            popup_mgr.borrow_mut().dismiss_all_popups(&state);
+        })
+    };
     let panel = Rc::new(RefCell::new(NotificationPanel::new(
         app,
         &state,
         config,
         on_panel_click,
         Rc::clone(&on_state_change),
+        on_panel_open,
     )));
 
     // D-Bus callbacks

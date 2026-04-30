@@ -147,6 +147,24 @@ impl PopupManager {
         }
     }
 
+    /// Closes every visible popup window without marking anything read
+    /// or touching history. Called when the panel opens — popups are
+    /// redundant with the panel showing the same notifications, and the
+    /// user opening the panel is purely a UI dedup, not an
+    /// acknowledgement of the popups themselves.
+    ///
+    /// Mirrors the per-popup `dismiss(id)` shape but clears in bulk and
+    /// also resets `state.active_popups` synchronously so the daemon's
+    /// own bookkeeping doesn't go out of sync. (Auto-dismiss timers
+    /// scheduled for these popups will still fire later — they no-op
+    /// against an already-closed window and an already-empty set.)
+    pub fn dismiss_all_popups(&mut self, state: &Rc<RefCell<NotificationState>>) {
+        for popup in self.popups.drain(..) {
+            popup.win.close();
+        }
+        state.borrow_mut().active_popups.clear();
+    }
+
     /// Recalculates top margins for all popups after one is removed.
     fn restack(&self) {
         for (i, popup) in self.popups.iter().enumerate() {
