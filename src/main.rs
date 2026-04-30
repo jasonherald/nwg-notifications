@@ -45,7 +45,9 @@ fn main() {
     if config.update {
         let to_push = crate::config::user_set_live_args(&matches);
         if to_push.is_empty() {
-            eprintln!("--update requires at least one of: --popup-position, --popup-width, --panel-width, --popup-timeout, --max-popups, --max-history");
+            eprintln!(
+                "--update requires at least one of: --popup-position, --popup-width, --panel-width, --popup-timeout, --max-popups, --max-history"
+            );
             std::process::exit(1);
         }
         let mut had_error = false;
@@ -157,7 +159,8 @@ fn activate_notifications(
     drop(s);
 
     // Shared callback for any state change -> save history + update waybar
-    let on_state_change = build_state_change_callback(&state, config.borrow().persist, history_path);
+    let on_state_change =
+        build_state_change_callback(&state, config.borrow().persist, history_path);
 
     // Popup manager
     let popup_mgr = Rc::new(RefCell::new(PopupManager::new(
@@ -187,7 +190,13 @@ fn activate_notifications(
         on_change_close();
     });
 
-    dbus::register_server(&state, config, Rc::clone(&on_state_change), on_notify, on_close);
+    dbus::register_server(
+        &state,
+        config,
+        Rc::clone(&on_state_change),
+        on_notify,
+        on_close,
+    );
 
     // DND menu (right-click waybar bell)
     let dnd_menu = Rc::new(RefCell::new(ui::dnd_menu::DndMenu::new(

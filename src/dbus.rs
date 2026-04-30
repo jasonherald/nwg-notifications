@@ -245,7 +245,9 @@ fn handle_nwg_count_method(
             let result = glib::Variant::from((count,));
             invocation.return_value(Some(&result));
         }
-        "SetPopupPosition" => handle_set_popup_position(params, invocation, config, on_state_change),
+        "SetPopupPosition" => {
+            handle_set_popup_position(params, invocation, config, on_state_change)
+        }
         "SetPopupWidth" => handle_set_popup_width(params, invocation, config, on_state_change),
         "SetPanelWidth" => handle_set_panel_width(params, invocation, config, on_state_change),
         "SetPopupTimeout" => handle_set_popup_timeout(params, invocation, config, on_state_change),
