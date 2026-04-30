@@ -22,7 +22,7 @@ struct ActivePopup {
 /// Manages popup notification windows.
 pub struct PopupManager {
     popups: Vec<ActivePopup>,
-    config: Rc<NotificationConfig>,
+    config: Rc<RefCell<NotificationConfig>>,
     app: gtk4::Application,
     on_state_change: Rc<dyn Fn()>,
     compositor: Rc<dyn Compositor>,
@@ -31,7 +31,7 @@ pub struct PopupManager {
 impl PopupManager {
     pub fn new(
         app: &gtk4::Application,
-        config: &Rc<NotificationConfig>,
+        config: &Rc<RefCell<NotificationConfig>>,
         on_state_change: Rc<dyn Fn()>,
         compositor: Rc<dyn Compositor>,
     ) -> Self {
@@ -49,7 +49,7 @@ impl PopupManager {
         // Remove stale entries (windows closed by timer or click)
         self.popups.retain(|p| p.win.is_visible());
 
-        while self.popups.len() >= self.config.max_popups {
+        while self.popups.len() >= self.config.borrow().max_popups {
             if let Some(old) = self.popups.first() {
                 let old_id = old.id;
                 self.dismiss(old_id);
@@ -60,10 +60,11 @@ impl PopupManager {
 
         let top_offset = self.calculate_offset();
         let win = gtk4::ApplicationWindow::new(&self.app);
-        window::setup_popup_window(&win, self.config.popup_position, top_offset);
+        window::setup_popup_window(&win, self.config.borrow().popup_position, top_offset);
         win.add_css_class("notification-popup-window");
-        win.set_width_request(self.config.popup_width);
-        win.set_default_size(self.config.popup_width, -1);
+        let popup_width = self.config.borrow().popup_width;
+        win.set_width_request(popup_width);
+        win.set_default_size(popup_width, -1);
 
         // Show on the focused monitor
         if let Some(mon) = focused_gdk_monitor(&*self.compositor) {
@@ -151,7 +152,7 @@ impl PopupManager {
         for (i, popup) in self.popups.iter().enumerate() {
             let offset = POPUP_TOP_MARGIN + (i as i32) * (self.estimated_height() + POPUP_GAP);
             let is_top = matches!(
-                self.config.popup_position,
+                self.config.borrow().popup_position,
                 crate::config::PopupPosition::TopRight
                     | crate::config::PopupPosition::TopCenter
                     | crate::config::PopupPosition::TopLeft
@@ -179,7 +180,7 @@ impl PopupManager {
         if notif.timeout_ms > 0 {
             notif.timeout_ms as u64
         } else {
-            self.config.popup_timeout
+            self.config.borrow().popup_timeout
         }
     }
 }

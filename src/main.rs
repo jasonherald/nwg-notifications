@@ -65,7 +65,7 @@ fn main() {
         .application_id("com.mac-notifications.hyprland")
         .build();
 
-    let config = Rc::new(config);
+    let config = Rc::new(RefCell::new(config));
     let hold_guard: Rc<RefCell<Option<gio::ApplicationHoldGuard>>> = Rc::new(RefCell::new(None));
     let hold_ref = Rc::clone(&hold_guard);
 
@@ -80,7 +80,7 @@ fn main() {
 /// Sets up the notification daemon: state, popup manager, panel, D-Bus server, and listeners.
 fn activate_notifications(
     app: &gtk4::Application,
-    config: &Rc<NotificationConfig>,
+    config: &Rc<RefCell<NotificationConfig>>,
     compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     sig_rx: &Rc<std::sync::mpsc::Receiver<listeners::NotificationCommand>>,
 ) {
@@ -90,13 +90,13 @@ fn activate_notifications(
     let app_dirs = get_app_dirs();
     let state = Rc::new(RefCell::new(NotificationState::new(
         app_dirs,
-        config.max_history,
+        config.borrow().max_history,
     )));
-    state.borrow_mut().dnd = config.dnd;
+    state.borrow_mut().dnd = config.borrow().dnd;
 
     // Load persisted history
     let history_path = persistence::history_path();
-    if config.persist {
+    if config.borrow().persist {
         let loaded = persistence::load_history(&history_path);
         if !loaded.is_empty() {
             log::info!("Loaded {} notifications from history", loaded.len());
@@ -116,7 +116,7 @@ fn activate_notifications(
     drop(s);
 
     // Shared callback for any state change -> save history + update waybar
-    let on_state_change = build_state_change_callback(&state, config.persist, history_path);
+    let on_state_change = build_state_change_callback(&state, config.borrow().persist, history_path);
 
     // Popup manager
     let popup_mgr = Rc::new(RefCell::new(PopupManager::new(
@@ -133,7 +133,7 @@ fn activate_notifications(
         &state,
         on_panel_click,
         Rc::clone(&on_state_change),
-        config.panel_width,
+        config.borrow().panel_width,
     )));
 
     // D-Bus callbacks
