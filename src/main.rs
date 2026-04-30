@@ -146,7 +146,7 @@ fn activate_notifications(
         on_change_close();
     });
 
-    dbus::register_server(&state, on_notify, on_close);
+    dbus::register_server(&state, config, Rc::clone(&on_state_change), on_notify, on_close);
 
     // DND menu (right-click waybar bell)
     let dnd_menu = Rc::new(RefCell::new(ui::dnd_menu::DndMenu::new(
