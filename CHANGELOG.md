@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.3.3] — Unreleased
+
+### Fixed
+
+- Opening the notification panel now closes any visible popup toasts
+  instead of leaving them on screen alongside the slide-out. Popups
+  were redundant once the panel showed the same notifications, and
+  overlapping popups on the panel's edge looked tacky. Closing the
+  popups on panel-open is purely a UI dedup — it doesn't mark them
+  read or touch history, so a user who hadn't yet clicked a popup can
+  still see and act on it from inside the panel. (#3)
+
 ## [0.3.2] — 2026-04-29
 
 Adds a live config update mechanism so consumers like `nwg-shell-config` can change runtime settings without restarting the daemon.
