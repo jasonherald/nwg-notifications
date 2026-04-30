@@ -1,5 +1,6 @@
 use super::constants::PANEL_REVEAL_DURATION_MS;
 use super::panel_content;
+use crate::config::NotificationConfig;
 use crate::state::NotificationState;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
@@ -16,7 +17,11 @@ pub struct NotificationPanel {
     backdrops: Vec<gtk4::ApplicationWindow>,
     revealer: gtk4::Revealer,
     list_box: gtk4::Box,
+    /// Stored so toggle() can refresh its `set_width_request` to pick up
+    /// any live `panel_width` change since the last open.
+    panel_box: gtk4::Box,
     state: Rc<RefCell<NotificationState>>,
+    config: Rc<RefCell<NotificationConfig>>,
     on_notification_click: Rc<dyn Fn(u32)>,
     on_state_change: Rc<dyn Fn()>,
 }
@@ -26,10 +31,11 @@ impl NotificationPanel {
     pub fn new(
         app: &gtk4::Application,
         state: &Rc<RefCell<NotificationState>>,
+        config: &Rc<RefCell<NotificationConfig>>,
         on_notification_click: Rc<dyn Fn(u32)>,
         on_state_change: Rc<dyn Fn()>,
-        panel_width: i32,
     ) -> Self {
+        let initial_width = config.borrow().panel_width;
         // One transparent backdrop per connected monitor — catches clicks
         // outside the panel on any output (issue #55).
         let backdrops = nwg_common::layer_shell::create_fullscreen_backdrops(
@@ -42,7 +48,7 @@ impl NotificationPanel {
         // Panel window
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("notification-panel-window");
-        win.set_width_request(panel_width);
+        win.set_width_request(initial_width);
         setup_panel_window(&win);
 
         // Revealer for slide animation
@@ -55,7 +61,7 @@ impl NotificationPanel {
         // Panel content container (inside revealer)
         let panel_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         panel_box.add_css_class("notification-panel");
-        panel_box.set_width_request(panel_width);
+        panel_box.set_width_request(initial_width);
         revealer.set_child(Some(&panel_box));
 
         // Scrolled list (created before header so Clear All can reference it)
@@ -107,7 +113,9 @@ impl NotificationPanel {
             backdrops,
             revealer,
             list_box,
+            panel_box,
             state: Rc::clone(state),
+            config: Rc::clone(config),
             on_notification_click,
             on_state_change,
         };
@@ -133,6 +141,8 @@ impl NotificationPanel {
             // Rebuild, show backdrops + window, then slide in
             let list = self.list_box.clone();
             let state = Rc::clone(&self.state);
+            let config = Rc::clone(&self.config);
+            let panel_box = self.panel_box.clone();
             let on_click = Rc::clone(&self.on_notification_click);
             let on_change = Rc::clone(&self.on_state_change);
             let win = self.win.clone();
@@ -140,6 +150,11 @@ impl NotificationPanel {
             let revealer = self.revealer.clone();
             gtk4::glib::idle_add_local_once(move || {
                 rebuild_list(&list, &state, on_click, on_change);
+                // Refresh panel_width from current config — picks up any
+                // live update since the last toggle.
+                let width = config.borrow().panel_width;
+                win.set_width_request(width);
+                panel_box.set_width_request(width);
                 for backdrop in &backdrops {
                     backdrop.set_visible(true);
                 }

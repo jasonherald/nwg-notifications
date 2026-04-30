@@ -11,7 +11,7 @@ use crate::config::NotificationConfig;
 use crate::state::NotificationState;
 use crate::ui::panel::NotificationPanel;
 use crate::ui::popup::PopupManager;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use gtk4::gio;
 use gtk4::prelude::*;
 use nwg_common::desktop::dirs::get_app_dirs;
@@ -21,7 +21,12 @@ use std::rc::Rc;
 
 fn main() {
     nwg_common::process::handle_dump_args();
-    let config = NotificationConfig::parse();
+    // Use the lower-level entry point so we have ArgMatches available for
+    // value_source filtering in --update mode (so we only push flags the
+    // user actually passed, not their defaults).
+    let matches = NotificationConfig::command().get_matches();
+    let config = NotificationConfig::from_arg_matches(&matches)
+        .expect("clap should produce a valid NotificationConfig from successful matches");
 
     if config.count {
         match dbus::query_count_via_dbus() {
@@ -35,6 +40,44 @@ fn main() {
                 std::process::exit(1);
             }
         }
+    }
+
+    if config.update {
+        let to_push = crate::config::user_set_live_args(&matches);
+        if to_push.is_empty() {
+            eprintln!(
+                "--update requires at least one of: --popup-position, --popup-width, --panel-width, --popup-timeout, --max-popups, --max-history"
+            );
+            std::process::exit(1);
+        }
+        let mut had_error = false;
+        for name in &to_push {
+            let push_result: Result<(), gtk4::glib::Error> = match *name {
+                "popup_position" => {
+                    use clap::ValueEnum;
+                    let raw = config
+                        .popup_position
+                        .to_possible_value()
+                        .expect("derived ValueEnum yields possible value")
+                        .get_name()
+                        .to_string();
+                    dbus::push_popup_position(&raw)
+                }
+                "popup_width" => dbus::push_popup_width(config.popup_width as u32),
+                "panel_width" => dbus::push_panel_width(config.panel_width as u32),
+                "popup_timeout" => dbus::push_popup_timeout(config.popup_timeout as u32),
+                "max_popups" => dbus::push_max_popups(config.max_popups as u32),
+                "max_history" => dbus::push_max_history(config.max_history as u32),
+                _ => unreachable!("user_set_live_args returns only known names"),
+            };
+            if let Err(e) = push_result {
+                eprintln!("Failed to update {}: {}", name, e);
+                had_error = true;
+            } else {
+                println!("Updated {}", name);
+            }
+        }
+        std::process::exit(if had_error { 1 } else { 0 });
     }
 
     if config.debug {
@@ -65,7 +108,7 @@ fn main() {
         .application_id("com.mac-notifications.hyprland")
         .build();
 
-    let config = Rc::new(config);
+    let config = Rc::new(RefCell::new(config));
     let hold_guard: Rc<RefCell<Option<gio::ApplicationHoldGuard>>> = Rc::new(RefCell::new(None));
     let hold_ref = Rc::clone(&hold_guard);
 
@@ -80,7 +123,7 @@ fn main() {
 /// Sets up the notification daemon: state, popup manager, panel, D-Bus server, and listeners.
 fn activate_notifications(
     app: &gtk4::Application,
-    config: &Rc<NotificationConfig>,
+    config: &Rc<RefCell<NotificationConfig>>,
     compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     sig_rx: &Rc<std::sync::mpsc::Receiver<listeners::NotificationCommand>>,
 ) {
@@ -90,13 +133,13 @@ fn activate_notifications(
     let app_dirs = get_app_dirs();
     let state = Rc::new(RefCell::new(NotificationState::new(
         app_dirs,
-        config.max_history,
+        config.borrow().max_history,
     )));
-    state.borrow_mut().dnd = config.dnd;
+    state.borrow_mut().dnd = config.borrow().dnd;
 
     // Load persisted history
     let history_path = persistence::history_path();
-    if config.persist {
+    if config.borrow().persist {
         let loaded = persistence::load_history(&history_path);
         if !loaded.is_empty() {
             log::info!("Loaded {} notifications from history", loaded.len());
@@ -116,7 +159,8 @@ fn activate_notifications(
     drop(s);
 
     // Shared callback for any state change -> save history + update waybar
-    let on_state_change = build_state_change_callback(&state, config.persist, history_path);
+    let on_state_change =
+        build_state_change_callback(&state, config.borrow().persist, history_path);
 
     // Popup manager
     let popup_mgr = Rc::new(RefCell::new(PopupManager::new(
@@ -131,9 +175,9 @@ fn activate_notifications(
     let panel = Rc::new(RefCell::new(NotificationPanel::new(
         app,
         &state,
+        config,
         on_panel_click,
         Rc::clone(&on_state_change),
-        config.panel_width,
     )));
 
     // D-Bus callbacks
@@ -146,7 +190,13 @@ fn activate_notifications(
         on_change_close();
     });
 
-    dbus::register_server(&state, on_notify, on_close);
+    dbus::register_server(
+        &state,
+        config,
+        Rc::clone(&on_state_change),
+        on_notify,
+        on_close,
+    );
 
     // DND menu (right-click waybar bell)
     let dnd_menu = Rc::new(RefCell::new(ui::dnd_menu::DndMenu::new(

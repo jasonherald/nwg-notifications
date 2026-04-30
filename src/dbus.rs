@@ -1,3 +1,4 @@
+use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency, clean_markup, parse_actions};
 use crate::state::NotificationState;
 use gtk4::gio;
@@ -55,6 +56,24 @@ const NWG_COUNT_INTROSPECT_XML: &str = r#"
     <signal name="CountChanged">
       <arg name="count" type="u"/>
     </signal>
+    <method name="SetPopupPosition">
+      <arg name="position" type="s" direction="in"/>
+    </method>
+    <method name="SetPopupWidth">
+      <arg name="width" type="u" direction="in"/>
+    </method>
+    <method name="SetPanelWidth">
+      <arg name="width" type="u" direction="in"/>
+    </method>
+    <method name="SetPopupTimeout">
+      <arg name="timeout_ms" type="u" direction="in"/>
+    </method>
+    <method name="SetMaxPopups">
+      <arg name="max" type="u" direction="in"/>
+    </method>
+    <method name="SetMaxHistory">
+      <arg name="max" type="u" direction="in"/>
+    </method>
   </interface>
 </node>
 "#;
@@ -78,6 +97,8 @@ pub type OnClose = Rc<dyn Fn(u32)>;
 /// daemon interface) and `org.nwg.Notifications` (the nwg-specific count IPC).
 pub fn register_server(
     state: &Rc<RefCell<NotificationState>>,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: Rc<dyn Fn()>,
     on_notify: OnNotify,
     on_close: OnClose,
 ) {
@@ -105,13 +126,15 @@ pub fn register_server(
     );
 
     let state_nwg = Rc::clone(state);
+    let config_nwg = Rc::clone(config);
+    let on_change_nwg = Rc::clone(&on_state_change);
     gio::bus_own_name(
         gio::BusType::Session,
         NWG_COUNT_BUS_NAME,
         gio::BusNameOwnerFlags::REPLACE,
         move |connection, _name| {
             log::info!("Acquired D-Bus name: {}", NWG_COUNT_BUS_NAME);
-            register_nwg_count_object(&connection, &state_nwg);
+            register_nwg_count_object(&connection, &state_nwg, &config_nwg, &on_change_nwg);
         },
         |_connection, _name| {
             log::debug!("nwg-count D-Bus name acquired callback");
@@ -176,6 +199,8 @@ fn handle_method(
 fn register_nwg_count_object(
     connection: &gio::DBusConnection,
     state: &Rc<RefCell<NotificationState>>,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
 ) {
     let node_info = gio::DBusNodeInfo::for_xml(NWG_COUNT_INTROSPECT_XML)
         .expect("Failed to parse nwg-count introspection XML");
@@ -185,12 +210,21 @@ fn register_nwg_count_object(
         .expect("nwg-count interface not found in XML");
 
     let state = Rc::clone(state);
+    let config = Rc::clone(config);
+    let on_state_change = Rc::clone(on_state_change);
 
     connection
         .register_object(NWG_COUNT_OBJECT_PATH, &interface_info)
         .method_call(
-            move |_conn, _sender, _path, _iface, method, _params, invocation| {
-                handle_nwg_count_method(method, invocation, &state);
+            move |_conn, _sender, _path, _iface, method, params, invocation| {
+                handle_nwg_count_method(
+                    method,
+                    &params,
+                    invocation,
+                    &state,
+                    &config,
+                    &on_state_change,
+                );
             },
         )
         .build()
@@ -199,8 +233,11 @@ fn register_nwg_count_object(
 
 fn handle_nwg_count_method(
     method: &str,
+    params: &glib::Variant,
     invocation: gio::DBusMethodInvocation,
     state: &Rc<RefCell<NotificationState>>,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
 ) {
     match method {
         "GetCount" => {
@@ -208,6 +245,14 @@ fn handle_nwg_count_method(
             let result = glib::Variant::from((count,));
             invocation.return_value(Some(&result));
         }
+        "SetPopupPosition" => {
+            handle_set_popup_position(params, invocation, config, on_state_change)
+        }
+        "SetPopupWidth" => handle_set_popup_width(params, invocation, config, on_state_change),
+        "SetPanelWidth" => handle_set_panel_width(params, invocation, config, on_state_change),
+        "SetPopupTimeout" => handle_set_popup_timeout(params, invocation, config, on_state_change),
+        "SetMaxPopups" => handle_set_max_popups(params, invocation, config, on_state_change),
+        "SetMaxHistory" => handle_set_max_history(params, invocation, config, on_state_change),
         _ => {
             log::warn!("Unknown nwg-count D-Bus method: {}", method);
             invocation.return_dbus_error(
@@ -216,6 +261,180 @@ fn handle_nwg_count_method(
             );
         }
     }
+}
+
+fn return_invalid_args(invocation: gio::DBusMethodInvocation, msg: &str) {
+    invocation.return_dbus_error("org.freedesktop.DBus.Error.InvalidArgs", msg);
+}
+
+fn handle_set_popup_position(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: String = match params.child_value(0).get() {
+        Some(s) => s,
+        None => {
+            return_invalid_args(invocation, "SetPopupPosition expects a string argument");
+            return;
+        }
+    };
+    use clap::ValueEnum;
+    match crate::config::PopupPosition::from_str(&raw, true) {
+        Ok(pos) => {
+            config.borrow_mut().popup_position = pos;
+            invocation.return_value(None);
+            on_state_change();
+        }
+        Err(_) => {
+            return_invalid_args(
+                invocation,
+                &format!(
+                    "Invalid popup-position '{raw}'. Expected one of: top-right, top-center, top-left, bottom-right, bottom-center, bottom-left."
+                ),
+            );
+        }
+    }
+}
+
+fn handle_set_popup_width(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(invocation, "SetPopupWidth expects a uint32 argument");
+            return;
+        }
+    };
+    let raw_i32 = match i32::try_from(raw) {
+        Ok(v) => v,
+        Err(_) => {
+            return_invalid_args(invocation, &format!("popup-width {raw} exceeds i32::MAX"));
+            return;
+        }
+    };
+    if !(crate::ui::constants::POPUP_WIDTH_MIN..=crate::ui::constants::POPUP_WIDTH_MAX)
+        .contains(&raw_i32)
+    {
+        return_invalid_args(
+            invocation,
+            &format!(
+                "popup-width {raw_i32} is not in {min}..={max}",
+                min = crate::ui::constants::POPUP_WIDTH_MIN,
+                max = crate::ui::constants::POPUP_WIDTH_MAX,
+            ),
+        );
+        return;
+    }
+    config.borrow_mut().popup_width = raw_i32;
+    invocation.return_value(None);
+    on_state_change();
+}
+
+fn handle_set_panel_width(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(invocation, "SetPanelWidth expects a uint32 argument");
+            return;
+        }
+    };
+    let raw_i32 = match i32::try_from(raw) {
+        Ok(v) => v,
+        Err(_) => {
+            return_invalid_args(invocation, &format!("panel-width {raw} exceeds i32::MAX"));
+            return;
+        }
+    };
+    if !(crate::ui::constants::PANEL_WIDTH_MIN..=crate::ui::constants::PANEL_WIDTH_MAX)
+        .contains(&raw_i32)
+    {
+        return_invalid_args(
+            invocation,
+            &format!(
+                "panel-width {raw_i32} is not in {min}..={max}",
+                min = crate::ui::constants::PANEL_WIDTH_MIN,
+                max = crate::ui::constants::PANEL_WIDTH_MAX,
+            ),
+        );
+        return;
+    }
+    config.borrow_mut().panel_width = raw_i32;
+    invocation.return_value(None);
+    on_state_change();
+}
+
+fn handle_set_popup_timeout(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(invocation, "SetPopupTimeout expects a uint32 argument");
+            return;
+        }
+    };
+    // 0 is a valid value (means "never auto-dismiss").
+    config.borrow_mut().popup_timeout = u64::from(raw);
+    invocation.return_value(None);
+    on_state_change();
+}
+
+fn handle_set_max_popups(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(invocation, "SetMaxPopups expects a uint32 argument");
+            return;
+        }
+    };
+    if raw == 0 {
+        return_invalid_args(invocation, "max-popups must be >= 1");
+        return;
+    }
+    config.borrow_mut().max_popups = raw as usize;
+    invocation.return_value(None);
+    on_state_change();
+}
+
+fn handle_set_max_history(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(invocation, "SetMaxHistory expects a uint32 argument");
+            return;
+        }
+    };
+    if raw == 0 {
+        return_invalid_args(invocation, "max-history must be >= 1");
+        return;
+    }
+    config.borrow_mut().max_history = raw as usize;
+    invocation.return_value(None);
+    on_state_change();
 }
 
 fn handle_notify(
@@ -359,6 +578,49 @@ pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
             "GetCount returned unexpected payload type",
         )
     })
+}
+
+/// Generic D-Bus client helper used by all six `--update` push wrappers.
+/// Same NO_AUTO_START + QUERY_COUNT_TIMEOUT_MS semantics as
+/// `query_count_via_dbus`.
+fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Error> {
+    let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    connection.call_sync(
+        Some(NWG_COUNT_BUS_NAME),
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        method,
+        Some(&payload),
+        None,
+        gio::DBusCallFlags::NO_AUTO_START,
+        QUERY_COUNT_TIMEOUT_MS,
+        gio::Cancellable::NONE,
+    )?;
+    Ok(())
+}
+
+pub fn push_popup_position(value: &str) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupPosition", glib::Variant::from((value,)))
+}
+
+pub fn push_popup_width(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupWidth", glib::Variant::from((value,)))
+}
+
+pub fn push_panel_width(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPanelWidth", glib::Variant::from((value,)))
+}
+
+pub fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupTimeout", glib::Variant::from((value,)))
+}
+
+pub fn push_max_popups(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetMaxPopups", glib::Variant::from((value,)))
+}
+
+pub fn push_max_history(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetMaxHistory", glib::Variant::from((value,)))
 }
 
 /// Emits CountChanged on the org.nwg.Notifications interface.
