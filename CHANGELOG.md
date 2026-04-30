@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
-## [0.3.3] — Unreleased
+## [0.3.3] — 2026-04-29
 
 ### Fixed
 
