@@ -493,5 +493,5 @@ CodeRabbit reviews within minutes. **Default to fixing every finding in-PR.** De
 ## Acceptance checklist (cross-reference to issue #3)
 
 - [ ] Panel-open closes every visible popup. — Task 1 (`dismiss_all_popups`) + Task 2 (callback fired from `toggle()`)
-- [ ] Popups are not marked read by the panel-open dedup. — Task 1 (method explicitly skips `mark_read`; matches existing auto-dismiss semantics from `src/ui/popup.rs:131`)
+- [ ] Popups are not marked read by the panel-open dedup. — Task 1 (method explicitly skips `mark_read`; matches the existing semantics of the auto-dismiss timeout callback in `PopupManager::show`, which closes the window without calling `mark_read`)
 - [ ] CHANGELOG entry. — Task 4
