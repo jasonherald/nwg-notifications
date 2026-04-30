@@ -75,11 +75,53 @@ pub struct NotificationConfig {
     /// Queries the running daemon over D-Bus; does not auto-start one if none is running.
     #[arg(long)]
     pub count: bool,
+
+    /// Push the values of any *also-passed* flags to the running daemon
+    /// over D-Bus, then exit. Used by nwg-shell-config and shell scripts
+    /// to update live config without restarting the daemon. Only flags
+    /// that are inherently runtime-mutable (popup-position, popup-width,
+    /// panel-width, popup-timeout, max-popups, max-history) take effect;
+    /// startup-only flags (--persist, --wm, --debug) are silently ignored
+    /// in this mode.
+    #[arg(long)]
+    pub update: bool,
+}
+
+/// The set of clap arg IDs that are inherently live-updatable. Flags
+/// outside this set (e.g. `--persist`, `--wm`) are skipped in `--update`
+/// mode regardless of whether the user passed them, because pushing them
+/// to a running daemon is meaningless or unsafe.
+pub const LIVE_UPDATABLE_ARGS: &[&str] = &[
+    "popup_position",
+    "popup_width",
+    "panel_width",
+    "popup_timeout",
+    "max_popups",
+    "max_history",
+];
+
+/// Returns the subset of `LIVE_UPDATABLE_ARGS` whose value source on the
+/// given matches is `CommandLine` (i.e., the user explicitly passed them
+/// rather than relying on a default). Used by `--update` mode to push
+/// only what the user asked to change, so e.g. `--update --popup-position
+/// top-center` doesn't reset every other knob to its default.
+pub fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str> {
+    LIVE_UPDATABLE_ARGS
+        .iter()
+        .filter(|name| {
+            matches!(
+                matches.value_source(name),
+                Some(clap::parser::ValueSource::CommandLine)
+            )
+        })
+        .copied()
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     #[test]
     fn defaults() {
@@ -139,6 +181,72 @@ mod tests {
     fn count_flag_set() {
         let config = NotificationConfig::parse_from(["test", "--count"]);
         assert!(config.count);
+    }
+
+    #[test]
+    fn update_flag_defaults_false() {
+        let config = NotificationConfig::parse_from(["test"]);
+        assert!(!config.update);
+    }
+
+    #[test]
+    fn update_flag_set() {
+        let config = NotificationConfig::parse_from(["test", "--update", "--popup-width", "500"]);
+        assert!(config.update);
+        assert_eq!(config.popup_width, 500);
+    }
+
+    #[test]
+    fn user_set_live_args_empty_when_only_defaults() {
+        let matches = NotificationConfig::command()
+            .try_get_matches_from(["test"])
+            .expect("parse default");
+        assert!(user_set_live_args(&matches).is_empty());
+    }
+
+    #[test]
+    fn user_set_live_args_returns_only_explicit_flags() {
+        let matches = NotificationConfig::command()
+            .try_get_matches_from([
+                "test",
+                "--update",
+                "--popup-position",
+                "top-center",
+                "--popup-width",
+                "600",
+            ])
+            .expect("parse with two flags");
+        let set = user_set_live_args(&matches);
+        assert!(set.contains(&"popup_position"));
+        assert!(set.contains(&"popup_width"));
+        assert_eq!(set.len(), 2, "got {:?}", set);
+    }
+
+    #[test]
+    fn user_set_live_args_ignores_startup_only_flags() {
+        let matches = NotificationConfig::command()
+            .try_get_matches_from(["test", "--update", "--persist", "--debug"])
+            .expect("parse with startup-only flags");
+        // --persist and --debug aren't in LIVE_UPDATABLE_ARGS, so the result is empty.
+        assert!(user_set_live_args(&matches).is_empty());
+    }
+
+    #[test]
+    fn live_updatable_args_contains_expected_six() {
+        assert_eq!(LIVE_UPDATABLE_ARGS.len(), 6);
+        for name in [
+            "popup_position",
+            "popup_width",
+            "panel_width",
+            "popup_timeout",
+            "max_popups",
+            "max_history",
+        ] {
+            assert!(
+                LIVE_UPDATABLE_ARGS.contains(&name),
+                "{name} missing from LIVE_UPDATABLE_ARGS"
+            );
+        }
     }
 
     #[test]

@@ -578,6 +578,49 @@ pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
     })
 }
 
+/// Generic D-Bus client helper used by all six `--update` push wrappers.
+/// Same NO_AUTO_START + QUERY_COUNT_TIMEOUT_MS semantics as
+/// `query_count_via_dbus`.
+fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Error> {
+    let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
+    connection.call_sync(
+        Some(NWG_COUNT_BUS_NAME),
+        NWG_COUNT_OBJECT_PATH,
+        NWG_COUNT_BUS_NAME,
+        method,
+        Some(&payload),
+        None,
+        gio::DBusCallFlags::NO_AUTO_START,
+        QUERY_COUNT_TIMEOUT_MS,
+        gio::Cancellable::NONE,
+    )?;
+    Ok(())
+}
+
+pub fn push_popup_position(value: &str) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupPosition", glib::Variant::from((value,)))
+}
+
+pub fn push_popup_width(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupWidth", glib::Variant::from((value,)))
+}
+
+pub fn push_panel_width(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPanelWidth", glib::Variant::from((value,)))
+}
+
+pub fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetPopupTimeout", glib::Variant::from((value,)))
+}
+
+pub fn push_max_popups(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetMaxPopups", glib::Variant::from((value,)))
+}
+
+pub fn push_max_history(value: u32) -> Result<(), glib::Error> {
+    call_setter_sync("SetMaxHistory", glib::Variant::from((value,)))
+}
+
 /// Emits CountChanged on the org.nwg.Notifications interface.
 ///
 /// Best-effort: a failure here doesn't affect anything else; we log and move on.
