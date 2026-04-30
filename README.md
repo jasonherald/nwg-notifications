@@ -184,6 +184,54 @@ have `SIGRTMIN+11` wired up:
 jq -r .count "$XDG_RUNTIME_DIR/mac-notifications-status.json"
 ```
 
+## Live config updates
+
+Six knobs take runtime updates without restarting the daemon. Two surfaces:
+
+### CLI
+
+```bash
+# Push individual settings:
+nwg-notifications --update --popup-position top-center
+nwg-notifications --update --popup-width 600
+
+# Push multiple in one call:
+nwg-notifications --update --popup-position top-center --popup-width 600
+```
+
+`--update` short-circuits before daemon init and uses `NO_AUTO_START`, so it never spawns a daemon. Exits 1 with a useful error when no daemon is running. Only flags you explicitly pass are pushed — defaults are never sent.
+
+### D-Bus
+
+For tooling that prefers the D-Bus surface directly (e.g. `nwg-shell-config` from Python via `pydbus` / `gi.repository.Gio`):
+
+```bash
+gdbus call --session \
+  --dest org.nwg.Notifications \
+  --object-path /org/nwg/Notifications \
+  --method org.nwg.Notifications.SetPopupPosition '"top-center"'
+
+gdbus call --session \
+  --dest org.nwg.Notifications \
+  --object-path /org/nwg/Notifications \
+  --method org.nwg.Notifications.SetPopupWidth 600
+```
+
+Each setter validates against the same ranges as the matching CLI flag and returns `org.freedesktop.DBus.Error.InvalidArgs` on bad input. The full set:
+
+| Setter             | Type | Validation                                                                |
+|--------------------|------|---------------------------------------------------------------------------|
+| `SetPopupPosition` | `s`  | One of: `top-right`, `top-center`, `top-left`, `bottom-right`, `bottom-center`, `bottom-left` |
+| `SetPopupWidth`    | `u`  | `100..=2000`                                                              |
+| `SetPanelWidth`    | `u`  | `200..=2000`                                                              |
+| `SetPopupTimeout`  | `u`  | Any uint32 (ms; `0` = never auto-dismiss)                                 |
+| `SetMaxPopups`     | `u`  | `>= 1`                                                                    |
+| `SetMaxHistory`    | `u`  | `>= 1`                                                                    |
+
+### What can't be live-updated
+
+`--persist`, `--wm`, and `--debug` are inherently startup-only — restart the daemon to change those.
+
 ## Theming
 
 Styling is embedded via `include_str!`; there's no user-writable `notifications.css` today. If you need to customize appearance, fork the crate and edit `assets/notifications.css`, or open an issue to discuss exposing it.

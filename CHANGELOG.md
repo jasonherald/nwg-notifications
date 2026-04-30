@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [Unreleased]
+
+### Added
+
+- Live config updates (#20). Six new D-Bus methods on
+  `org.nwg.Notifications` let consumers like `nwg-shell-config` push
+  runtime config changes without restarting the daemon:
+  `SetPopupPosition`, `SetPopupWidth`, `SetPanelWidth`,
+  `SetPopupTimeout`, `SetMaxPopups`, `SetMaxHistory`. Each setter
+  validates against the same ranges as the matching CLI flag and
+  returns `org.freedesktop.DBus.Error.InvalidArgs` on bad input.
+- `nwg-notifications --update <flags>` CLI subcommand wraps the
+  D-Bus setters as a thin client (mirrors the existing `--count`
+  pattern). Uses `clap::ArgMatches::value_source` to push only flags
+  the user explicitly passed, so `--update --popup-position
+  top-center` doesn't reset other knobs to their defaults. (#20)
+
 ## [0.3.1] — 2026-04-28
 
 Closes the [nwg-shell-config integration epic](https://github.com/jasonherald/nwg-notifications/issues/8) on the daemon side: adds the flags and IPC surface that `nwg-shell-config` needs to drive `nwg-notifications` directly (replacing swaync), plus a small D-Bus protocol fix surfaced during review.
