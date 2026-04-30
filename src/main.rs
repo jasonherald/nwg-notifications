@@ -131,9 +131,9 @@ fn activate_notifications(
     let panel = Rc::new(RefCell::new(NotificationPanel::new(
         app,
         &state,
+        config,
         on_panel_click,
         Rc::clone(&on_state_change),
-        config.borrow().panel_width,
     )));
 
     // D-Bus callbacks
