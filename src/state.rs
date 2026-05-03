@@ -49,10 +49,29 @@ impl NotificationState {
         }
     }
 
-    /// Adds a notification and returns its assigned ID.
-    pub fn add(&mut self, mut notif: Notification) -> u32 {
+    /// Returns the next notification ID, advancing `next_id` for the
+    /// following caller.
+    ///
+    /// The freedesktop notification spec treats `id == 0` as "no ID
+    /// assigned" — for example, `Notify`'s `replaces_id = 0` means
+    /// "don't replace; allocate a fresh ID." So we must never hand
+    /// out 0 as a real notification ID. The `.max(1)` after
+    /// `wrapping_add(1)` is the zero-protection: when `next_id` wraps
+    /// from `u32::MAX` back to 0, we skip 0 and return 1 instead.
+    ///
+    /// `wrapping_add` (rather than checked arithmetic) is intentional:
+    /// 4 billion notifications is well past the panel's useful
+    /// lifetime, but if someone hits it, we'd rather quietly recycle
+    /// IDs than panic.
+    fn next_notification_id(&mut self) -> u32 {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1).max(1);
+        id
+    }
+
+    /// Adds a notification and returns its assigned ID.
+    pub fn add(&mut self, mut notif: Notification) -> u32 {
+        let id = self.next_notification_id();
         notif.id = id;
         self.history.insert(0, notif);
         self.trim_history();
