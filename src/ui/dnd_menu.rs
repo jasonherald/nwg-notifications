@@ -117,7 +117,7 @@ impl DndMenu {
         vbox.set_margin_bottom(8);
 
         // Toggle button — label reflects current state
-        let is_dnd = self.state.borrow().dnd;
+        let is_dnd = self.state.borrow().is_dnd_enabled();
         let toggle_label = if is_dnd {
             "Turn off Do Not Disturb"
         } else {
@@ -132,7 +132,7 @@ impl DndMenu {
         let win_toggle = self.win.clone();
         let backdrops_toggle = self.backdrops.clone();
         toggle_btn.connect_clicked(move |_| {
-            let new_dnd = !state_toggle.borrow().dnd;
+            let new_dnd = !state_toggle.borrow().is_dnd_enabled();
             state_toggle.borrow_mut().set_dnd(new_dnd, None);
             on_change_toggle();
             win_toggle.set_visible(false);
@@ -144,7 +144,7 @@ impl DndMenu {
 
         if is_dnd {
             // Show remaining time if timed DND is active
-            if let Some(expiry) = self.state.borrow().dnd_expires
+            if let Some(expiry) = self.state.borrow().dnd_expires()
                 && let Ok(remaining) = expiry.duration_since(std::time::SystemTime::now())
             {
                 let mins = remaining.as_secs() / 60;
@@ -230,7 +230,7 @@ fn build_timed_dnd_button(
         gtk4::glib::timeout_add_local_once(
             std::time::Duration::from_secs(minutes * 60),
             move || {
-                let current = state_timer.borrow().dnd_expires;
+                let current = state_timer.borrow().dnd_expires();
                 if current == Some(captured_expiry) {
                     state_timer.borrow_mut().set_dnd(false, None);
                     log::info!("Timed DND expired");

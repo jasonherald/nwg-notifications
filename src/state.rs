@@ -25,10 +25,15 @@ pub(crate) struct NotificationState {
     pub(crate) history: Vec<Notification>,
     /// Next ID to assign (starts at 1).
     next_id: u32,
-    /// Do Not Disturb mode.
-    pub(crate) dnd: bool,
-    /// When timed DND expires (None = permanent or off).
-    pub(crate) dnd_expires: Option<std::time::SystemTime>,
+    /// Do Not Disturb mode. Private — readers go through
+    /// `is_dnd_enabled`, writers through `set_dnd`. Privatized in
+    /// the #37 cleanup so the `(dnd, dnd_expires)` invariant can't
+    /// drift via stray direct field writes.
+    dnd: bool,
+    /// When timed DND expires (None = permanent or off). Private
+    /// for the same reason as `dnd`; readers go through the
+    /// `dnd_expires` accessor, writers through `set_dnd`.
+    dnd_expires: Option<std::time::SystemTime>,
     /// App directories for icon resolution.
     pub(crate) app_dirs: Vec<PathBuf>,
     /// IDs of notifications currently showing as popups.
@@ -115,6 +120,18 @@ impl NotificationState {
     pub(crate) fn dismiss_all(&mut self) {
         self.history.clear();
         self.active_popups.clear();
+    }
+
+    /// Returns whether DND is currently active.
+    pub(crate) fn is_dnd_enabled(&self) -> bool {
+        self.dnd
+    }
+
+    /// Returns the current timed-DND expiry, if any. `None` means
+    /// either permanent DND (toggled on without an expiry) or DND
+    /// is off entirely.
+    pub(crate) fn dnd_expires(&self) -> Option<std::time::SystemTime> {
+        self.dnd_expires
     }
 
     /// Sets DND mode and (optionally) the timed-DND expiry, then

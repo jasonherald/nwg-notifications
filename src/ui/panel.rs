@@ -253,7 +253,7 @@ fn build_header(
     let state_dnd = Rc::clone(state);
     let on_change_dnd = Rc::clone(on_state_change);
     dnd_btn.connect_clicked(move |btn| {
-        let new_dnd = !state_dnd.borrow().dnd;
+        let new_dnd = !state_dnd.borrow().is_dnd_enabled();
         state_dnd.borrow_mut().set_dnd(new_dnd, None);
         let icon = if new_dnd {
             "notifications-disabled-symbolic"

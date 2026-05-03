@@ -99,7 +99,7 @@ pub(crate) fn poll_signals(
                     panel.borrow().toggle();
                 }
                 NotificationCommand::ToggleDnd => {
-                    let new_dnd = !state.borrow().dnd;
+                    let new_dnd = !state.borrow().is_dnd_enabled();
                     state.borrow_mut().set_dnd(new_dnd, None);
                     log::debug!("DND toggled via signal");
                     on_change();
