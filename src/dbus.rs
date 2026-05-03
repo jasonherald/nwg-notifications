@@ -145,6 +145,25 @@ pub(crate) fn register_server(
     );
 }
 
+/// Registers the daemon's `org.freedesktop.Notifications` D-Bus
+/// object on the given connection. Wires `handle_method` as the
+/// method-call dispatcher.
+///
+/// # Panics
+///
+/// Panics on three unreachable-in-practice failure modes, all of
+/// which represent a build-time misconfiguration rather than a
+/// runtime condition:
+/// - `INTROSPECT_XML` fails to parse — the XML is a `const &str`
+///   in this file, so a parse failure means we shipped malformed
+///   XML and CI should have caught it.
+/// - The `org.freedesktop.Notifications` interface name doesn't
+///   resolve in the parsed `DBusNodeInfo` — same `const`-source
+///   provenance as above.
+/// - `register_object` fails to build — the object path is a
+///   string literal and the interface info just came from the
+///   parsed `const`, so any failure here would be a bug in `gio`'s
+///   builder.
 fn register_object(
     connection: &gio::DBusConnection,
     state: &Rc<RefCell<NotificationState>>,
@@ -196,6 +215,24 @@ fn handle_method(
     }
 }
 
+/// Registers the daemon's `org.nwg.Notifications` D-Bus object on
+/// the given connection. Backs `GetCount`, the six `Set*` live-config
+/// setters, and the `CountChanged` signal source.
+///
+/// # Panics
+///
+/// Panics on three unreachable-in-practice failure modes, all of
+/// which represent a build-time misconfiguration rather than a
+/// runtime condition:
+/// - `NWG_COUNT_INTROSPECT_XML` fails to parse — the XML is a
+///   `const &str` in this file, so a parse failure means we
+///   shipped malformed XML and CI should have caught it.
+/// - The `org.nwg.Notifications` interface name doesn't resolve
+///   in the parsed `DBusNodeInfo` — same `const`-source
+///   provenance as above.
+/// - `register_object` fails to build — the object path is a
+///   string literal and the interface info just came from the
+///   parsed `const`.
 fn register_nwg_count_object(
     connection: &gio::DBusConnection,
     state: &Rc<RefCell<NotificationState>>,
@@ -574,6 +611,14 @@ const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
 /// a daemon — if no daemon is running, this returns an error.
 ///
 /// Used by the `--count` CLI subcommand.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable (no D-Bus, no `DBUS_SESSION_BUS_ADDRESS`).
+/// - No daemon owns the `org.nwg.Notifications` name (`NO_AUTO_START` semantics).
+/// - The call exceeds `QUERY_COUNT_TIMEOUT_MS`.
+/// - The reply payload doesn't unpack to the expected `(u32,)` tuple.
 pub(crate) fn query_count_via_dbus() -> Result<u32, glib::Error> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let result = connection.call_sync(
@@ -614,26 +659,113 @@ fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Er
     Ok(())
 }
 
+/// Pushes a `--popup-position` change to the running daemon via
+/// `org.nwg.Notifications.SetPopupPosition`. Used by
+/// `nwg-notifications --update --popup-position <value>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name (the
+///   `NO_AUTO_START` flag means the call doesn't spawn one).
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, an
+///   unrecognised position string).
+/// - The daemon's running version doesn't expose `SetPopupPosition`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`,
+///   which the CLI's `--update` path translates into the
+///   "restart-after-upgrade" hint.
 pub(crate) fn push_popup_position(value: &str) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupPosition", glib::Variant::from((value,)))
 }
 
+/// Pushes a `--popup-width <px>` change to the running daemon via
+/// `org.nwg.Notifications.SetPopupWidth`. Used by
+/// `nwg-notifications --update --popup-width <px>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a value
+///   outside the 100..=2000 range).
+/// - The daemon's running version doesn't expose `SetPopupWidth`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_popup_width(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupWidth", glib::Variant::from((value,)))
 }
 
+/// Pushes a `--panel-width <px>` change to the running daemon via
+/// `org.nwg.Notifications.SetPanelWidth`. Used by
+/// `nwg-notifications --update --panel-width <px>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a value
+///   outside the 200..=2000 range).
+/// - The daemon's running version doesn't expose `SetPanelWidth`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_panel_width(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPanelWidth", glib::Variant::from((value,)))
 }
 
+/// Pushes a `--popup-timeout <secs>` change to the running daemon via
+/// `org.nwg.Notifications.SetPopupTimeout`. Used by
+/// `nwg-notifications --update --popup-timeout <secs>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
+///   value outside the validated range for `--popup-timeout`).
+/// - The daemon's running version doesn't expose `SetPopupTimeout`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupTimeout", glib::Variant::from((value,)))
 }
 
+/// Pushes a `--max-popups <N>` change to the running daemon via
+/// `org.nwg.Notifications.SetMaxPopups`. Used by
+/// `nwg-notifications --update --max-popups <N>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
+///   value outside the validated range for `--max-popups`).
+/// - The daemon's running version doesn't expose `SetMaxPopups`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_max_popups(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetMaxPopups", glib::Variant::from((value,)))
 }
 
+/// Pushes a `--max-history <N>` change to the running daemon via
+/// `org.nwg.Notifications.SetMaxHistory`. Used by
+/// `nwg-notifications --update --max-history <N>`.
+///
+/// # Errors
+///
+/// Returns the underlying `glib::Error` when:
+/// - The session bus isn't reachable.
+/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon rejects the value with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
+///   value outside the validated range for `--max-history`).
+/// - The daemon's running version doesn't expose `SetMaxHistory`
+///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_max_history(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetMaxHistory", glib::Variant::from((value,)))
 }
