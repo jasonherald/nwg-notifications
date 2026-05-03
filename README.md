@@ -74,7 +74,7 @@ sudo make install PREFIX=/usr
 make install-dbus
 ```
 
-**`make upgrade` — one-step build + install + daemon restart:**
+### `make upgrade` — one-step build + install + daemon restart
 
 For source-build users on an already-installed setup, `make upgrade` does the whole replace-and-respawn cycle in one command. It builds release, validates that the running daemon's binary path matches where this `make upgrade` would install (refusing to proceed on a prefix mismatch so you don't end up with a dead daemon), captures the running daemon's args via `--dump-args`, sends `SIGTERM`, installs the new binary, and respawns with the same args.
 
@@ -108,7 +108,7 @@ kill $(pidof nwg-notifications)
 # spawns the new binary. Or run `nwg-notifications --persist &` directly.
 ```
 
-If you happen to have a source clone of the repo as well, [`make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin`](#make-install--recommended-one-stop-binary--d-bus-service-file) automates the whole replace-and-respawn cycle (and preserves the running daemon's args).
+If you happen to have a source clone of the repo as well, [`make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin`](#make-upgrade--one-step-build--install--daemon-restart) automates the whole replace-and-respawn cycle (and preserves the running daemon's args).
 
 Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
 
