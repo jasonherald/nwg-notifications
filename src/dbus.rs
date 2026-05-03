@@ -513,8 +513,23 @@ fn handle_capabilities(invocation: gio::DBusMethodInvocation) {
     invocation.return_value(Some(&variant));
 }
 
+/// Returns the (name, vendor, version, spec_version) tuple reported by the
+/// `org.freedesktop.Notifications.GetServerInformation` D-Bus method.
+/// Vendor is the daemon's own name (single-vendor project convention);
+/// version comes from `Cargo.toml` at compile time so it stays in sync
+/// with releases automatically; spec_version tracks the freedesktop
+/// notification specification level we implement.
+fn server_info_tuple() -> (&'static str, &'static str, &'static str, &'static str) {
+    (
+        "nwg-notifications",
+        "nwg-notifications",
+        env!("CARGO_PKG_VERSION"),
+        "1.2",
+    )
+}
+
 fn handle_server_info(invocation: gio::DBusMethodInvocation) {
-    let info = ("nwg-notifications", "nwg-dock-hyprland", "0.1.0", "1.2");
+    let info = server_info_tuple();
     let variant = glib::Variant::from(info);
     invocation.return_value(Some(&variant));
 }
@@ -712,5 +727,14 @@ mod tests {
     fn is_unknown_method_error_rejects_other_dbus_errors() {
         let err = glib::Error::new(gio::DBusError::NoMemory, "out of memory");
         assert!(!is_unknown_method_error(&err));
+    }
+
+    #[test]
+    fn server_info_tuple_uses_cargo_pkg_version() {
+        let (name, vendor, version, spec) = server_info_tuple();
+        assert_eq!(name, "nwg-notifications");
+        assert_eq!(vendor, "nwg-notifications");
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(spec, "1.2");
     }
 }

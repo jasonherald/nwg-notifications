@@ -215,17 +215,26 @@ fn build_timed_dnd_button(
         state_btn.borrow_mut().dnd_expires = Some(expiry);
         log::info!("DND enabled for {} minutes", minutes);
 
+        // Capture the expiry we just stored. If the user clicks a
+        // different duration before this timer fires, the stored
+        // expiry will have been replaced; this timer's `expiry` token
+        // won't match and the firing will no-op. Cleaner than
+        // tracking a glib::SourceId and removing the previous source
+        // (no removal lifetime concerns).
+        let captured_expiry = expiry;
         let state_timer = Rc::clone(&state_btn);
         let on_change_timer = Rc::clone(&on_change);
         gtk4::glib::timeout_add_local_once(
             std::time::Duration::from_secs(minutes * 60),
             move || {
-                if state_timer.borrow().dnd_expires.is_some() {
+                let current = state_timer.borrow().dnd_expires;
+                if current == Some(captured_expiry) {
                     state_timer.borrow_mut().dnd = false;
                     state_timer.borrow_mut().dnd_expires = None;
                     log::info!("Timed DND expired");
                     on_change_timer();
                 }
+                // else: a newer schedule replaced this one; no-op silently.
             },
         );
 

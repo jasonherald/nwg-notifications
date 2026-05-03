@@ -1,7 +1,10 @@
+use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency};
 use gtk4::gio;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 /// A group of notifications from the same application.
 pub struct AppGroup {
@@ -24,14 +27,16 @@ pub struct NotificationState {
     pub app_dirs: Vec<PathBuf>,
     /// IDs of notifications currently showing as popups.
     pub active_popups: HashSet<u32>,
-    /// Maximum history entries to retain.
-    pub max_history: usize,
+    /// Shared daemon configuration. trim_history() reads max_history
+    /// from here so live `--update --max-history` changes take effect
+    /// without a daemon restart (see #30).
+    pub config: Rc<RefCell<NotificationConfig>>,
     /// D-Bus connection for emitting ActionInvoked signals.
     pub dbus_connection: Option<gio::DBusConnection>,
 }
 
 impl NotificationState {
-    pub fn new(app_dirs: Vec<PathBuf>, max_history: usize) -> Self {
+    pub fn new(app_dirs: Vec<PathBuf>, config: Rc<RefCell<NotificationConfig>>) -> Self {
         Self {
             history: Vec::new(),
             next_id: 1,
@@ -39,7 +44,7 @@ impl NotificationState {
             dnd_expires: None,
             app_dirs,
             active_popups: HashSet::new(),
-            max_history,
+            config,
             dbus_connection: None,
         }
     }
@@ -130,8 +135,9 @@ impl NotificationState {
     }
 
     fn trim_history(&mut self) {
-        if self.history.len() > self.max_history {
-            self.history.truncate(self.max_history);
+        let max_history = self.config.borrow().max_history;
+        if self.history.len() > max_history {
+            self.history.truncate(max_history);
         }
     }
 }
@@ -140,6 +146,15 @@ impl NotificationState {
 mod tests {
     use super::*;
     use std::time::SystemTime;
+
+    fn test_config_with_max_history(max_history: usize) -> Rc<RefCell<NotificationConfig>> {
+        // Build a default NotificationConfig via clap, then mutate
+        // max_history. Avoids re-deriving the entire default-set inline.
+        use clap::Parser;
+        let mut config = NotificationConfig::parse_from(["test"]);
+        config.max_history = max_history;
+        Rc::new(RefCell::new(config))
+    }
 
     fn test_notif(app: &str, summary: &str) -> Notification {
         Notification {
@@ -159,7 +174,7 @@ mod tests {
 
     #[test]
     fn add_assigns_sequential_ids() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         let id1 = state.add(test_notif("app1", "first"));
         let id2 = state.add(test_notif("app2", "second"));
         assert_eq!(id1, 1);
@@ -168,7 +183,7 @@ mod tests {
 
     #[test]
     fn replace_reuses_id() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         let id = state.add(test_notif("app", "original"));
         let replaced = state.replace(id, test_notif("app", "updated"));
         assert_eq!(replaced, id);
@@ -178,7 +193,7 @@ mod tests {
 
     #[test]
     fn dismiss_app_removes_only_matching() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.add(test_notif("firefox", "tab1"));
         state.add(test_notif("discord", "msg1"));
         state.add(test_notif("firefox", "tab2"));
@@ -189,7 +204,7 @@ mod tests {
 
     #[test]
     fn unread_count() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         let id1 = state.add(test_notif("app", "one"));
         state.add(test_notif("app", "two"));
         assert_eq!(state.unread_count(), 2);
@@ -199,7 +214,7 @@ mod tests {
 
     #[test]
     fn grouped_by_app_groups_correctly() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.add(test_notif("firefox", "tab1"));
         state.add(test_notif("discord", "msg"));
         state.add(test_notif("firefox", "tab2"));
@@ -209,7 +224,7 @@ mod tests {
 
     #[test]
     fn dnd_suppresses_normal_popups() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.dnd = true;
         assert!(!state.should_show_popup(Urgency::Normal));
         assert!(!state.should_show_popup(Urgency::Low));
@@ -218,7 +233,7 @@ mod tests {
 
     #[test]
     fn trim_history_caps_at_max() {
-        let mut state = NotificationState::new(vec![], 3);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(3));
         state.add(test_notif("app", "1"));
         state.add(test_notif("app", "2"));
         state.add(test_notif("app", "3"));
@@ -238,7 +253,7 @@ mod tests {
 
         // Also verify via state: use replace to set a known ID, then
         // confirm next_id never produces 0.
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         // Manually push next_id close to wrapping by using replace with
         // high IDs. The simplest approach: add notifications and confirm
         // the returned IDs are sequential starting from 1.
@@ -253,13 +268,13 @@ mod tests {
 
     #[test]
     fn remove_nonexistent_returns_none() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         assert!(state.remove(999).is_none());
     }
 
     #[test]
     fn dismiss_all_clears_everything() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         let id1 = state.add(test_notif("app1", "one"));
         let id2 = state.add(test_notif("app2", "two"));
         state.add(test_notif("app3", "three"));
@@ -274,7 +289,7 @@ mod tests {
 
     #[test]
     fn mark_read_nonexistent_no_panic() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.add(test_notif("app", "exists"));
         // Marking a non-existent ID should not panic.
         state.mark_read(999);
@@ -284,7 +299,7 @@ mod tests {
 
     #[test]
     fn active_popups_tracking() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.active_popups.insert(42);
         assert!(state.active_popups.contains(&42));
         state.active_popups.remove(&42);
@@ -293,7 +308,7 @@ mod tests {
 
     #[test]
     fn empty_state_operations() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         assert_eq!(state.unread_count(), 0);
         assert!(state.grouped_by_app().is_empty());
         // dismiss_all on empty state should not panic.
@@ -303,7 +318,7 @@ mod tests {
 
     #[test]
     fn replace_nonexistent_creates_new() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         // Replace with an ID that doesn't exist falls through to add().
         let id = state.replace(999, test_notif("app", "new"));
         // Should have created a new entry with a fresh ID (1, since state is new).
@@ -314,7 +329,7 @@ mod tests {
 
     #[test]
     fn history_ordering_newest_first() {
-        let mut state = NotificationState::new(vec![], 100);
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
         state.add(test_notif("app", "first"));
         state.add(test_notif("app", "second"));
         state.add(test_notif("app", "third"));
@@ -322,5 +337,28 @@ mod tests {
         assert_eq!(state.history[0].summary, "third");
         assert_eq!(state.history[1].summary, "second");
         assert_eq!(state.history[2].summary, "first");
+    }
+
+    #[test]
+    fn add_respects_live_config_max_history_change() {
+        // Bug fix #30: trim_history must read max_history from the live
+        // config, not a state-side copy.
+        let config = test_config_with_max_history(5);
+        let mut state = NotificationState::new(vec![], Rc::clone(&config));
+        for i in 0..5 {
+            state.add(test_notif("app", &format!("notif {i}")));
+        }
+        assert_eq!(state.history.len(), 5);
+
+        // Simulate `--update --max-history 2` lowering the cap.
+        config.borrow_mut().max_history = 2;
+        state.add(test_notif("app", "trigger"));
+
+        assert_eq!(
+            state.history.len(),
+            2,
+            "trim_history should have read the new max from config; \
+             stuck at 5 means the bug isn't fixed"
+        );
     }
 }
