@@ -29,7 +29,7 @@ Recommended priority order: ship the correctness fixes first (1.1, 1.2, 2.1), th
 
 **Files:** `src/dbus.rs`, `src/state.rs`, `src/main.rs`
 
-**Scope:** The daemon stores `max_history` twice: once on `NotificationConfig` (read by clap, mutable via `SetMaxHistory`) and once on `NotificationState` (read by `trim_history()` after every `add()`). At startup `main.rs:157` seeds `state.max_history` from `config.max_history`, but `handle_set_max_history` in `dbus.rs:418-438` only writes the config copy. Result: a user who runs `nwg-notifications --update --max-history 50` against a daemon started with the default 200 will keep retaining 200 entries until the daemon restarts. Fix by either (a) eliminating the duplicated field on `NotificationState` and reading from the shared `Rc<RefCell<NotificationConfig>>`, or (b) propagating the new value through the on-state-change path. Option (a) is the right fix and matches the existing precedent for `popup_position` / `popup_width` / `popup_timeout` / `max_popups`, none of which keep a state-side copy.
+**Scope:** The daemon stores `max_history` twice: once on `NotificationConfig` (read by clap, mutable via `SetMaxHistory`) and once on `NotificationState` (read by `trim_history()` after every `add()`). At startup `activate_notifications` in `main.rs` seeds `state.max_history` from `config.max_history`, but `handle_set_max_history` in `dbus.rs` only writes the config copy. Result: a user who runs `nwg-notifications --update --max-history 50` against a daemon started with the default 200 will keep retaining 200 entries until the daemon restarts. Fix by either (a) eliminating the duplicated field on `NotificationState` and reading from the shared `Rc<RefCell<NotificationConfig>>`, or (b) propagating the new value through the on-state-change path. Option (a) is the right fix and matches the existing precedent for `popup_position` / `popup_width` / `popup_timeout` / `max_popups`, none of which keep a state-side copy.
 
 **Rationale:** Silent behaviour drift between the documented `--update --max-history` semantics and the daemon's actual trimming. CodeRabbit reviewed `SetMaxHistory` in #20 but didn't catch this because the state field was added pre-#20 and the connection wasn't obvious.
 
@@ -47,7 +47,7 @@ Recommended priority order: ship the correctness fixes first (1.1, 1.2, 2.1), th
 
 **Files:** `src/ui/dnd_menu.rs`
 
-**Scope:** `build_timed_dnd_button` at `dnd_menu.rs:212-237` schedules a `glib::timeout_add_local_once` for the requested duration. Re-clicking a different duration (e.g. user picks 1h, then 2h before the first fires) leaves both timers armed. The 1h timer fires first, sees `dnd_expires.is_some()` (still true — the 2h replaced it), and disables DND, breaking the user's expectation. Fix by storing the current expiry generation/token on `state.dnd_expires` (e.g. `(SystemTime, u64)` token) and having the timer compare its captured token against the live one before acting; or by holding the `SourceId` and removing the previous one in `state` before scheduling the new.
+**Scope:** `build_timed_dnd_button` in `dnd_menu.rs` schedules a `glib::timeout_add_local_once` for the requested duration. Re-clicking a different duration (e.g. user picks 1h, then 2h before the first fires) leaves both timers armed. The 1h timer fires first, sees `dnd_expires.is_some()` (still true — the 2h replaced it), and disables DND, breaking the user's expectation. Fix by storing the current expiry generation/token on `state.dnd_expires` (e.g. `(SystemTime, u64)` token) and having the timer compare its captured token against the live one before acting; or by holding the `SourceId` and removing the previous one in `state` before scheduling the new.
 
 **Rationale:** Easy to reproduce, tied to a documented user-facing feature (timed DND), and the fix is local. Not a "polish" item per se, but it's small enough to include in the polish pass.
 
@@ -63,7 +63,7 @@ Recommended priority order: ship the correctness fixes first (1.1, 1.2, 2.1), th
 
 **Files:** `src/dbus.rs`
 
-**Scope:** `handle_server_info` at `dbus.rs:516-520` returns `("nwg-notifications", "nwg-dock-hyprland", "0.1.0", "1.2")`. The vendor is wrong (left over from the pre-split mac-doc-hyprland era — the dock isn't this daemon's vendor) and the version is wrong (we're on 0.3.4). Per the freedesktop notification spec, this is what client apps and notification debuggers (e.g. `dbus-send --print-reply`, `notify-send --print-id`, GNOME's notification troubleshooter) read to identify the running daemon. Replace with:
+**Scope:** `handle_server_info` in `dbus.rs` returns `("nwg-notifications", "nwg-dock-hyprland", "0.1.0", "1.2")`. The vendor is wrong (left over from the pre-split mac-doc-hyprland era — the dock isn't this daemon's vendor) and the version is wrong (we're on 0.3.4). Per the freedesktop notification spec, this is what client apps and notification debuggers (e.g. `dbus-send --print-reply`, `notify-send --print-id`, GNOME's notification troubleshooter) read to identify the running daemon. Replace with:
 
 ```rust
 let info = ("nwg-notifications", "nwg-notifications", env!("CARGO_PKG_VERSION"), "1.2");
@@ -85,7 +85,7 @@ let info = ("nwg-notifications", "nwg-notifications", env!("CARGO_PKG_VERSION"),
 
 **Files:** `src/waybar.rs`
 
-**Scope:** `waybar.rs:5` hardcodes the waybar-refresh signal as `45` (SIGRTMIN+11 on glibc). On musl `SIGRTMIN` is 35 instead of 34, so `SIGRTMIN+11 = 46`, not 45. The rest of the codebase already derives RT-signal numbers via `nwg_common::signals::sigrtmin()` precisely to avoid this — see `listeners.rs:24-26` for the right pattern. Either: (a) add a `sig_waybar_refresh()` to `nwg_common::signals` mirroring the existing `sig_notification_*()` helpers and call it here, or (b) compute `nwg_common::signals::sigrtmin() + 11` inline. (a) is preferred since waybar-refresh is the same convention used by every nwg-* daemon — likely candidates for promotion to nwg-common.
+**Scope:** The `WAYBAR_REFRESH_SIGNAL` const at the top of `waybar.rs` hardcodes the waybar-refresh signal as `45` (SIGRTMIN+11 on glibc). On musl `SIGRTMIN` is 35 instead of 34, so `SIGRTMIN+11 = 46`, not 45. The rest of the codebase already derives RT-signal numbers via `nwg_common::signals::sigrtmin()` precisely to avoid this — see `start_signal_listener` in `listeners.rs` for the right pattern. Either: (a) add a `sig_waybar_refresh()` to `nwg_common::signals` mirroring the existing `sig_notification_*()` helpers and call it here, or (b) compute `nwg_common::signals::sigrtmin() + 11` inline. (a) is preferred since waybar-refresh is the same convention used by every nwg-* daemon — likely candidates for promotion to nwg-common.
 
 **Rationale:** CLAUDE.md explicitly flags this gotcha ("Values approximate — glibc/musl differ; see `nwg_common::signals::sigrtmin()`") and we're violating it in the one place that matters for the waybar signaling round-trip.
 
@@ -131,7 +131,7 @@ The history-file rename is the most user-visible: existing users would lose pers
 
 **Files:** `src/waybar.rs`
 
-**Scope:** `waybar.rs:28,36,47` use raw `\u{f06d9}`, `\u{f009a}`, `\u{f009c}` codepoints with a sidecar comment showing the rendered glyph and name. Either lift these to named constants (`const ICON_BELL_OFF: &str = "\u{f06d9}";`) per the CLAUDE.md "no magic numbers, named constants" convention, or document the codepoint scheme (Material Design Icons range, font requirement) in a module docstring. Currently the magic-codepoints rule has a quiet exception here.
+**Scope:** The dnd / unread / empty branches of `update_status` in `waybar.rs` use raw `\u{f06d9}`, `\u{f009a}`, `\u{f009c}` codepoints with a sidecar comment showing the rendered glyph and name. Either lift these to named constants (`const ICON_BELL_OFF: &str = "\u{f06d9}";`) per the CLAUDE.md "no magic numbers, named constants" convention, or document the codepoint scheme (Material Design Icons range, font requirement) in a module docstring. Currently the magic-codepoints rule has a quiet exception here.
 
 **Rationale:** Minor consistency hit; named constants make it grep-able and document the icon-font dependency.
 
@@ -149,7 +149,7 @@ The history-file rename is the most user-visible: existing users would lose pers
 
 **Files:** `src/dbus.rs`
 
-**Scope:** `dbus.rs:270-438` defines six near-identical functions (`handle_set_popup_position` / `handle_set_popup_width` / `handle_set_panel_width` / `handle_set_popup_timeout` / `handle_set_max_popups` / `handle_set_max_history`) that all follow:
+**Scope:** `dbus.rs` defines six near-identical functions (`handle_set_popup_position` / `handle_set_popup_width` / `handle_set_panel_width` / `handle_set_popup_timeout` / `handle_set_max_popups` / `handle_set_max_history`) that all follow:
 
 1. Decode the first arg from `glib::Variant` to the expected type.
 2. (Sometimes) validate the range / non-zero constraint.
@@ -158,7 +158,7 @@ The history-file rename is the most user-visible: existing users would lose pers
 
 Refactor to a small generic helper `handle_set<T>(...)` that takes the decoder, the validator (or `Ok` for unconstrained types), and the writer closure. Drops ~110 LOC and makes the validation-on-each-knob policy uniform. The `SetPopupPosition` case is special (string → enum) so it might keep its own small wrapper, but the five `u32` variants collapse cleanly.
 
-**Rationale:** The boilerplate has grown 6× since #20 added the live-config knobs. Dropping it makes adding a 7th knob a one-line change instead of a 20-line copy-paste. Same shape applies to the `push_*` client wrappers (`dbus.rs:602-624`) — six near-identical 3-line functions that could be one generic.
+**Rationale:** The boilerplate has grown 6× since #20 added the live-config knobs. Dropping it makes adding a 7th knob a one-line change instead of a 20-line copy-paste. Same shape applies to the six `push_*` client wrappers in `dbus.rs` — three-line functions that could be one generic.
 
 **Acceptance criteria:**
 - [ ] Six `handle_set_*` functions collapsed into a single generic + small per-knob validator entries (a slice of `(method_name, handler)` pairs would also work).
@@ -174,9 +174,9 @@ Refactor to a small generic helper `handle_set<T>(...)` that takes the decoder, 
 **Files:** `src/state.rs`, `src/listeners.rs`, `src/ui/panel.rs`, `src/ui/dnd_menu.rs`
 
 **Scope:** Three places mutate `state.dnd`:
-- `listeners.rs:96-102` (signal handler) — sets `dnd`, logs, fires `on_state_change`.
-- `ui/panel.rs:250-261` (panel header button) — sets `dnd`, updates the button icon, logs, fires `on_state_change`. Does **not** clear `dnd_expires`.
-- `ui/dnd_menu.rs:128-138` and `212-216` — sets `dnd` + `dnd_expires`, logs, fires `on_state_change`.
+- The `ToggleDnd` arm of `poll_signals` in `listeners.rs` (signal handler) — sets `dnd`, logs, fires `on_state_change`.
+- The DND-button click handler in `build_header` in `ui/panel.rs` (panel header button) — sets `dnd`, updates the button icon, logs, fires `on_state_change`. Does **not** clear `dnd_expires`.
+- The permanent-DND and timed-DND button handlers in `ui/dnd_menu.rs` — set `dnd` + `dnd_expires`, log, fire `on_state_change`.
 
 The three paths' subtle differences are bugs-of-omission (the panel header button leaves a stale `dnd_expires`, the signal handler doesn't either set or clear it, etc.). Add `NotificationState::set_dnd(enabled: bool, expires: Option<SystemTime>)` that handles the field write + log line; have all three callers route through it. Also: the panel header button's icon update should ideally be driven by a state-changed callback rather than baked into the click handler — separate concern, so probably out of scope for this item, but worth noting.
 
@@ -214,7 +214,7 @@ Special call-out: the field-level `pub` on `Notification` and `NotificationState
 
 **Files:** new `src/paths.rs`, `src/persistence.rs`, `src/waybar.rs`
 
-**Scope:** `persistence.rs:5-9` defines `history_path()` and `waybar.rs:17-22` defines `status_path()` — two near-identical functions that join a base dir against a fixed filename. Both will be touched by Item 2.1. Lift them to a `paths` module so the rename is one-file diff and the conventions (cache dir vs runtime dir, fallback to `/tmp`) are co-located. Small enough to land alongside Item 2.1 if preferred.
+**Scope:** `history_path()` in `persistence.rs` and `status_path()` in `waybar.rs` are two near-identical functions that join a base dir against a fixed filename. Both will be touched by Item 2.1. Lift them to a `paths` module so the rename is one-file diff and the conventions (cache dir vs runtime dir, fallback to `/tmp`) are co-located. Small enough to land alongside Item 2.1 if preferred.
 
 **Rationale:** Pure cohesion. Two of three filename constants in the codebase live next to the I/O code that uses them; lifting them out is the standard refactor.
 
@@ -234,11 +234,11 @@ Special call-out: the field-level `pub` on `Notification` and `NotificationState
 **Files:** `src/main.rs`, `src/ui/popup.rs`, `src/ui/panel.rs`, `src/dbus.rs`
 
 **Scope:** Several `as` casts are doing real conversions where `try_from` would document the safety case:
-- `main.rs:78-82`: `config.popup_width as u32` etc. — these converted i32→u32, validated upstream; could be `u32::try_from(...).expect("validated by clap")` or a `to_u32()` helper if it gets repetitive.
-- `dbus.rs:413,435`: `raw as usize` for `max_popups` / `max_history` — u32→usize is always lossless on 32-bit-and-up, but `usize::from(raw)` reads cleaner and survives a hypothetical 16-bit target audit.
-- `ui/popup.rs:171,187`: `i as i32` and `self.popups.len() as i32` for layout math — len is bounded by `max_popups` which is small, but the implicit truncation is non-obvious.
-- `ui/popup.rs:319`: `focused_idx as u32` — `focused_idx` is a `usize` from `position()`; same shape.
-- `ui/panel.rs:206`: `PANEL_REVEAL_DURATION_MS as u64` — the constant is `u32`, conversion is lossless. Could use `u64::from()`.
+- The `--update` mode's `push_*` dispatch in `main()`: `config.popup_width as u32` etc. — these converted i32→u32, validated upstream; could be `u32::try_from(...).expect("validated by clap")` or a `to_u32()` helper if it gets repetitive.
+- `handle_set_max_popups` and `handle_set_max_history` in `dbus.rs`: `raw as usize` for `max_popups` / `max_history` — u32→usize is always lossless on 32-bit-and-up, but `usize::from(raw)` reads cleaner and survives a hypothetical 16-bit target audit.
+- `PopupManager::restack` and `PopupManager::calculate_offset` in `ui/popup.rs`: `i as i32` and `self.popups.len() as i32` for layout math — len is bounded by `max_popups` which is small, but the implicit truncation is non-obvious.
+- `focused_gdk_monitor` in `ui/popup.rs`: `focused_idx as u32` — `focused_idx` is a `usize` from `position()`; same shape.
+- The `hide_panel` timeout in `ui/panel.rs`: `PANEL_REVEAL_DURATION_MS as u64` — the constant is `u32`, conversion is lossless. Could use `u64::from()`.
 
 Stronger version of `unread_count_to_u32`'s precedent (the one place in the codebase that does this rigorously). Doesn't have to be 100% — just the cases where the cast is non-trivial.
 
@@ -256,7 +256,7 @@ Stronger version of `unread_count_to_u32`'s precedent (the one place in the code
 
 **Files:** `src/dbus.rs`, possibly new `src/dbus_hints.rs`
 
-**Scope:** `extract_urgency` (dbus.rs:651-664) and `extract_string_hint` (dbus.rs:666-676) walk a `glib::Variant` `a{sv}` dict by index. They're pure, fully testable with synthetic `glib::Variant` payloads, and currently untested. Either lift them to a sibling module or just add tests in the existing `#[cfg(test)] mod tests` block. While there: `extract_urgency` could itself use `extract_string_hint`'s shape (they both walk the same dict structure with different value-type extractors) — a generic `extract_hint::<T>(hints, key) -> Option<T>` would unify them.
+**Scope:** `extract_urgency` and `extract_string_hint` in `dbus.rs` walk a `glib::Variant` `a{sv}` dict by index. They're pure, fully testable with synthetic `glib::Variant` payloads, and currently untested. Either lift them to a sibling module or just add tests in the existing `#[cfg(test)] mod tests` block. While there: `extract_urgency` could itself use `extract_string_hint`'s shape (they both walk the same dict structure with different value-type extractors) — a generic `extract_hint::<T>(hints, key) -> Option<T>` would unify them.
 
 **Rationale:** Pure helpers without coverage are the easiest test wins. Generic version also makes adding future hint extractors (e.g. `transient`, `image-data`) trivial.
 
@@ -274,23 +274,23 @@ Stronger version of `unread_count_to_u32`'s precedent (the one place in the code
 
 **Scope:** Two micro-inconsistencies:
 - Format style: most `log::*` calls use `{}` positional (`log::warn!("Unknown method: {}", method)`), one uses `{e}` interpolated (`log::debug!("Failed to signal waybar: {e}")`). Pick one — the `{e}` interpolated form is what `eprintln!`/`format!` calls are using elsewhere in the file (consistent within `main.rs`'s `eprintln!`s), and rustfmt-clippy will eventually push that direction. Lean toward interpolated.
-- Log-level: `Unknown D-Bus method` is `warn` (`dbus.rs:190`) but the equivalent path through `--update` against a stale daemon is `error` (`main.rs:87,101`). For unknown-method-from-client (the daemon-side handler) `warn` is right; for unknown-method-from-cli-against-stale-daemon (the client-side push) `error` is right because it's an actionable failure for the user. Currently both make sense individually but reading the code at the same time is jarring. Add a one-sentence rationale comment at each site.
+- Log-level: `Unknown D-Bus method` is `warn` in the fallthrough arm of `handle_method` in `dbus.rs` but the equivalent path through `--update` against a stale daemon is `error` in `main()`'s `--update` failure branches. For unknown-method-from-client (the daemon-side handler) `warn` is right; for unknown-method-from-cli-against-stale-daemon (the client-side push) `error` is right because it's an actionable failure for the user. Currently both make sense individually but reading the code at the same time is jarring. Add a one-sentence rationale comment at each site.
 
 **Rationale:** Cross-PR drift — the format style was set in early PRs, then `{e}` came in later; log-level choices were per-PR. Documenting the rule pre-empts the next CodeRabbit ping.
 
 **Acceptance criteria:**
 - [ ] One log format-style rule applied across all `log::*` calls.
-- [ ] Comment near `dbus.rs:190` explaining why client-side unknown-method is `warn` here vs `error` in `main.rs`.
+- [ ] Comment near the `_ => log::warn!(...)` arm of `handle_method` in `dbus.rs` explaining why daemon-side unknown-method is `warn` here vs `error` in the `--update` CLI path in `main.rs`.
 
 **Effort:** trivial
 
 **Suggested label:** refactor
 
-#### Item 4.4: Drop redundant `match` on `bool` in `state.rs:50` and similar
+#### Item 4.4: Document the `id != 0` invariant in `NotificationState::add`
 
 **Files:** `src/state.rs`
 
-**Scope:** `state.rs:50`: `self.next_id = self.next_id.wrapping_add(1).max(1);` is correct but the `.max(1)` is doing two things at once (wrap-around protection + zero-protection). The accompanying test `id_wrapping_at_max` documents both. Worth a one-line comment (or an `assert_ne!(id, 0, "..")` guard in debug-only) explaining that we treat 0 as "no ID assigned" (a freedesktop spec convention — replaces_id=0 means "don't replace"). The current code is right, just opaque.
+**Scope:** The `next_id` increment inside `NotificationState::add` (`self.next_id = self.next_id.wrapping_add(1).max(1);`) is correct but the `.max(1)` is doing two things at once (wrap-around protection + zero-protection). The accompanying test `id_wrapping_at_max` documents both. Worth a one-line comment (or an `assert_ne!(id, 0, "..")` guard in debug-only) explaining that we treat 0 as "no ID assigned" (a freedesktop spec convention — replaces_id=0 means "don't replace"). The current code is right, just opaque.
 
 While there: extract `next_notification_id(&mut self) -> u32` since the wrapping-arithmetic comment is the kind of thing that should live next to the function, not the call site.
 
@@ -357,7 +357,7 @@ While there: extract `next_notification_id(&mut self) -> u32` since the wrapping
 
 **Files:** `src/ui/notification_row.rs`
 
-**Scope:** The `relative_time` helper at `notification_row.rs:105-117` is pure (takes a `SystemTime`, returns a `String`) and trivially testable by passing a `SystemTime::now() - Duration`. Currently zero coverage. Add four tests covering the four branches (`now`, `Nm`, `Nh`, `Nd`).
+**Scope:** The `relative_time` helper in `notification_row.rs` is pure (takes a `SystemTime`, returns a `String`) and trivially testable by passing a `SystemTime::now() - Duration`. Currently zero coverage. Add four tests covering the four branches (`now`, `Nm`, `Nh`, `Nd`).
 
 **Rationale:** Pure helper, no GTK dependency, no fixture cost.
 
@@ -408,7 +408,7 @@ While there: extract `next_notification_id(&mut self) -> u32` since the wrapping
 
 **Files:** `src/main.rs`
 
-**Scope:** `hold_guard` at `main.rs:133-139` is the GTK convention to keep the GApplication alive past the activate-then-idle window. There's no test for the daemon-doesn't-exit-immediately case. This is hard to test from inside a unit test (you'd need a full GTK environment), but the integration-test track (#16) is the right home — flag it for inclusion when the integration-test infra exists. In the meantime, add a code comment explaining the hold-guard's purpose in one sentence (currently it's "obvious from context if you know GTK"; not obvious otherwise).
+**Scope:** The `hold_guard` setup in `main()` is the GTK convention to keep the GApplication alive past the activate-then-idle window. There's no test for the daemon-doesn't-exit-immediately case. This is hard to test from inside a unit test (you'd need a full GTK environment), but the integration-test track (#16) is the right home — flag it for inclusion when the integration-test infra exists. In the meantime, add a code comment explaining the hold-guard's purpose in one sentence (currently it's "obvious from context if you know GTK"; not obvious otherwise).
 
 **Rationale:** Don't paper over a coverage gap with a fake test — flag it for the integration-test track and document the intent inline.
 
