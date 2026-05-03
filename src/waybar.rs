@@ -62,9 +62,11 @@ fn status_path() -> PathBuf {
         .join("mac-notifications-status.json")
 }
 
-/// Writes the waybar status file and signals waybar to refresh.
-pub(crate) fn update_status(unread: usize, dnd: bool) {
-    let status = if dnd {
+/// Pure helper: builds the waybar status payload for the current
+/// daemon state. Split out from `update_status` so the four-way
+/// shape can be tested without going through disk I/O.
+fn build_status(unread: usize, dnd: bool) -> WaybarStatus {
+    if dnd {
         WaybarStatus {
             text: ICON_BELL_OFF.into(),
             tooltip: "Do Not Disturb".into(),
@@ -91,7 +93,12 @@ pub(crate) fn update_status(unread: usize, dnd: bool) {
             class: "empty".into(),
             count: 0,
         }
-    };
+    }
+}
+
+/// Writes the waybar status file and signals waybar to refresh.
+pub(crate) fn update_status(unread: usize, dnd: bool) {
+    let status = build_status(unread, dnd);
 
     let path = status_path();
     match serde_json::to_string(&status) {
@@ -138,6 +145,50 @@ mod tests {
             json.contains("\"count\":7"),
             "expected count field in JSON, got: {json}"
         );
+    }
+
+    #[test]
+    fn build_status_dnd_branch_uses_bell_off_glyph() {
+        // DND wins over unread count: even with 5 unread notifications,
+        // the dnd flag forces the dnd glyph + class. The count field
+        // is preserved in the JSON so consumers can still surface the
+        // backlog count next to the bell-off glyph if they want.
+        let s = build_status(5, true);
+        assert_eq!(s.text, ICON_BELL_OFF);
+        assert_eq!(s.tooltip, "Do Not Disturb");
+        assert_eq!(s.alt, "dnd");
+        assert_eq!(s.class, "dnd");
+        assert_eq!(s.count, 5);
+    }
+
+    #[test]
+    fn build_status_singular_unread_uses_singular_tooltip() {
+        let s = build_status(1, false);
+        assert_eq!(s.text, format!("{ICON_BELL_BADGE} 1"));
+        assert_eq!(s.tooltip, "1 unread notification");
+        assert_eq!(s.alt, "unread");
+        assert_eq!(s.class, "unread");
+        assert_eq!(s.count, 1);
+    }
+
+    #[test]
+    fn build_status_plural_unread_uses_plural_tooltip() {
+        let s = build_status(5, false);
+        assert_eq!(s.text, format!("{ICON_BELL_BADGE} 5"));
+        assert_eq!(s.tooltip, "5 unread notifications");
+        assert_eq!(s.alt, "unread");
+        assert_eq!(s.class, "unread");
+        assert_eq!(s.count, 5);
+    }
+
+    #[test]
+    fn build_status_empty_branch_uses_bell_outline() {
+        let s = build_status(0, false);
+        assert_eq!(s.text, ICON_BELL_OUTLINE);
+        assert_eq!(s.tooltip, "No notifications");
+        assert_eq!(s.alt, "empty");
+        assert_eq!(s.class, "empty");
+        assert_eq!(s.count, 0);
     }
 
     #[test]
