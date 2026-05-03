@@ -7,6 +7,7 @@ mod config;
 mod dbus;
 mod listeners;
 mod notification;
+mod paths;
 mod persistence;
 mod state;
 mod ui;
@@ -172,7 +173,7 @@ fn activate_notifications(
     state.borrow_mut().dnd = config.borrow().dnd;
 
     // Load persisted history
-    let history_path = persistence::history_path();
+    let history_path = paths::history_path();
     if config.borrow().persist {
         let loaded = persistence::load_history(&history_path);
         if !loaded.is_empty() {
