@@ -91,6 +91,18 @@ sudo make install PREFIX=/usr
 make install-dbus
 ```
 
+**`make upgrade` — one-step build + install + daemon restart:**
+
+For source-build users on an already-installed setup, `make upgrade` does the whole replace-and-respawn cycle in one command. It builds release, validates that the running daemon's binary path matches where this `make upgrade` would install (refusing to proceed on a prefix mismatch so you don't end up with a dead daemon), captures the running daemon's args via `--dump-args`, sends `SIGTERM`, installs the new binary, and respawns with the same args.
+
+```bash
+make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin
+```
+
+(Or `sudo make upgrade` for system-wide installs — same prefix matching applies.)
+
+This is the recommended path for the source-build workflow once the daemon is already running. Cargo-install users don't have it; see the "After upgrading" note in the [From crates.io](#from-cratesio-recommended-for-end-users) subsection above for the manual equivalent.
+
 ## Usage
 
 ```bash
