@@ -5,7 +5,7 @@ use std::path::PathBuf;
 ///
 /// For popup windows, uses `create_pixbuf` for high-quality rendering.
 /// Falls through: app_icon → desktop_entry → app_name → fallback.
-pub fn resolve_popup_icon(
+pub(crate) fn resolve_popup_icon(
     app_icon: &str,
     app_name: &str,
     desktop_entry: Option<&str>,
@@ -40,7 +40,7 @@ pub fn resolve_popup_icon(
 ///
 /// Used in the panel where glycin pixbuf loading can cause crashes
 /// during rapid rebuilds. Falls through: app_icon → app_name → fallback.
-pub fn resolve_theme_icon(
+pub(crate) fn resolve_theme_icon(
     app_icon: &str,
     app_name: &str,
     app_dirs: &[PathBuf],

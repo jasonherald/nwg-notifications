@@ -79,23 +79,23 @@ const NWG_COUNT_INTROSPECT_XML: &str = r#"
 "#;
 
 /// D-Bus name for the nwg-specific count IPC interface.
-pub const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
+pub(crate) const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
 /// D-Bus object path for the nwg-specific count IPC interface.
-pub const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
+pub(crate) const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
 
 /// Callback invoked when a new notification arrives via D-Bus.
 /// Implement this to show popups, update waybar, etc.
-pub type OnNotify = Rc<dyn Fn(&Notification)>;
+pub(crate) type OnNotify = Rc<dyn Fn(&Notification)>;
 
 /// Callback invoked when a notification is closed via D-Bus.
-pub type OnClose = Rc<dyn Fn(u32)>;
+pub(crate) type OnClose = Rc<dyn Fn(u32)>;
 
 /// Registers the notification D-Bus server on the session bus.
 ///
 /// Runs entirely on the glib main loop — no threads or async needed.
 /// Acquires both `org.freedesktop.Notifications` (the standard notification
 /// daemon interface) and `org.nwg.Notifications` (the nwg-specific count IPC).
-pub fn register_server(
+pub(crate) fn register_server(
     state: &Rc<RefCell<NotificationState>>,
     config: &Rc<RefCell<NotificationConfig>>,
     on_state_change: Rc<dyn Fn()>,
@@ -535,7 +535,7 @@ fn handle_server_info(invocation: gio::DBusMethodInvocation) {
 }
 
 /// Emits the ActionInvoked D-Bus signal to the sending app.
-pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key: &str) {
+pub(crate) fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key: &str) {
     let params = glib::Variant::from((id, action_key));
     if let Err(e) = connection.emit_signal(
         None::<&str>,
@@ -553,7 +553,7 @@ pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key
 /// in theory a count could exceed u32::MAX; in practice `max_history`
 /// caps that long before the protocol cares. Logs and clamps to
 /// `u32::MAX` if it ever does happen rather than silently truncating.
-pub fn unread_count_to_u32(unread: usize) -> u32 {
+pub(crate) fn unread_count_to_u32(unread: usize) -> u32 {
     u32::try_from(unread).unwrap_or_else(|_| {
         log::error!(
             "Unread count {} exceeds u32::MAX; clamping for D-Bus payload",
@@ -574,7 +574,7 @@ const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
 /// a daemon — if no daemon is running, this returns an error.
 ///
 /// Used by the `--count` CLI subcommand.
-pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
+pub(crate) fn query_count_via_dbus() -> Result<u32, glib::Error> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let result = connection.call_sync(
         Some(NWG_COUNT_BUS_NAME),
@@ -614,27 +614,27 @@ fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Er
     Ok(())
 }
 
-pub fn push_popup_position(value: &str) -> Result<(), glib::Error> {
+pub(crate) fn push_popup_position(value: &str) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupPosition", glib::Variant::from((value,)))
 }
 
-pub fn push_popup_width(value: u32) -> Result<(), glib::Error> {
+pub(crate) fn push_popup_width(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupWidth", glib::Variant::from((value,)))
 }
 
-pub fn push_panel_width(value: u32) -> Result<(), glib::Error> {
+pub(crate) fn push_panel_width(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPanelWidth", glib::Variant::from((value,)))
 }
 
-pub fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
+pub(crate) fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetPopupTimeout", glib::Variant::from((value,)))
 }
 
-pub fn push_max_popups(value: u32) -> Result<(), glib::Error> {
+pub(crate) fn push_max_popups(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetMaxPopups", glib::Variant::from((value,)))
 }
 
-pub fn push_max_history(value: u32) -> Result<(), glib::Error> {
+pub(crate) fn push_max_history(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetMaxHistory", glib::Variant::from((value,)))
 }
 
@@ -643,14 +643,14 @@ pub fn push_max_history(value: u32) -> Result<(), glib::Error> {
 /// `--update` CLI to give an actionable message when the running daemon
 /// is from a release older than the CLI and doesn't recognise a method
 /// the CLI is trying to call (#25).
-pub fn is_unknown_method_error(err: &glib::Error) -> bool {
+pub(crate) fn is_unknown_method_error(err: &glib::Error) -> bool {
     err.matches(gio::DBusError::UnknownMethod)
 }
 
 /// Emits CountChanged on the org.nwg.Notifications interface.
 ///
 /// Best-effort: a failure here doesn't affect anything else; we log and move on.
-pub fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
+pub(crate) fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
     let params = glib::Variant::from((count,));
     if let Err(e) = connection.emit_signal(
         None::<&str>,

@@ -9,7 +9,7 @@ use std::sync::mpsc;
 
 /// Commands the notification daemon responds to via signals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NotificationCommand {
+pub(crate) enum NotificationCommand {
     TogglePanel,
     ToggleDnd,
     ShowDndMenu,
@@ -18,7 +18,7 @@ pub enum NotificationCommand {
 /// Starts signal listener for notification-specific signals.
 ///
 /// Must be called BEFORE app.connect_activate (before GTK starts).
-pub fn start_signal_listener() -> Rc<mpsc::Receiver<NotificationCommand>> {
+pub(crate) fn start_signal_listener() -> Rc<mpsc::Receiver<NotificationCommand>> {
     let (tx, rx) = mpsc::channel();
 
     let sig_panel = signals::sig_notification_toggle();
@@ -73,7 +73,7 @@ pub fn start_signal_listener() -> Rc<mpsc::Receiver<NotificationCommand>> {
 }
 
 /// Polls the signal receiver on the GTK main thread.
-pub fn poll_signals(
+pub(crate) fn poll_signals(
     sig_rx: &Rc<mpsc::Receiver<NotificationCommand>>,
     panel: &Rc<RefCell<NotificationPanel>>,
     state: &Rc<RefCell<NotificationState>>,

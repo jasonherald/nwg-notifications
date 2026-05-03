@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 /// Builds a single notification row for the history panel.
-pub fn build_row(
+pub(crate) fn build_row(
     notif: &Notification,
     app_dirs: &[PathBuf],
     on_click: impl Fn(u32) + 'static,

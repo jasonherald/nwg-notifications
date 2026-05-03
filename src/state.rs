@@ -7,36 +7,36 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 /// A group of notifications from the same application.
-pub struct AppGroup {
-    pub app_name: String,
-    pub app_icon: String,
-    pub notifications: Vec<Notification>,
+pub(crate) struct AppGroup {
+    pub(crate) app_name: String,
+    pub(crate) app_icon: String,
+    pub(crate) notifications: Vec<Notification>,
 }
 
 /// Mutable state for the notification daemon.
-pub struct NotificationState {
+pub(crate) struct NotificationState {
     /// All notifications, newest first.
-    pub history: Vec<Notification>,
+    pub(crate) history: Vec<Notification>,
     /// Next ID to assign (starts at 1).
     next_id: u32,
     /// Do Not Disturb mode.
-    pub dnd: bool,
+    pub(crate) dnd: bool,
     /// When timed DND expires (None = permanent or off).
-    pub dnd_expires: Option<std::time::SystemTime>,
+    pub(crate) dnd_expires: Option<std::time::SystemTime>,
     /// App directories for icon resolution.
-    pub app_dirs: Vec<PathBuf>,
+    pub(crate) app_dirs: Vec<PathBuf>,
     /// IDs of notifications currently showing as popups.
-    pub active_popups: HashSet<u32>,
+    pub(crate) active_popups: HashSet<u32>,
     /// Shared daemon configuration. trim_history() reads max_history
     /// from here so live `--update --max-history` changes take effect
     /// without a daemon restart (see #30).
-    pub config: Rc<RefCell<NotificationConfig>>,
+    pub(crate) config: Rc<RefCell<NotificationConfig>>,
     /// D-Bus connection for emitting ActionInvoked signals.
-    pub dbus_connection: Option<gio::DBusConnection>,
+    pub(crate) dbus_connection: Option<gio::DBusConnection>,
 }
 
 impl NotificationState {
-    pub fn new(app_dirs: Vec<PathBuf>, config: Rc<RefCell<NotificationConfig>>) -> Self {
+    pub(crate) fn new(app_dirs: Vec<PathBuf>, config: Rc<RefCell<NotificationConfig>>) -> Self {
         Self {
             history: Vec::new(),
             next_id: 1,
@@ -70,7 +70,7 @@ impl NotificationState {
     }
 
     /// Adds a notification and returns its assigned ID.
-    pub fn add(&mut self, mut notif: Notification) -> u32 {
+    pub(crate) fn add(&mut self, mut notif: Notification) -> u32 {
         let id = self.next_notification_id();
         notif.id = id;
         self.history.insert(0, notif);
@@ -79,7 +79,7 @@ impl NotificationState {
     }
 
     /// Replaces an existing notification or adds a new one.
-    pub fn replace(&mut self, replaces_id: u32, mut notif: Notification) -> u32 {
+    pub(crate) fn replace(&mut self, replaces_id: u32, mut notif: Notification) -> u32 {
         if replaces_id > 0
             && let Some(existing) = self.history.iter_mut().find(|n| n.id == replaces_id)
         {
@@ -91,7 +91,7 @@ impl NotificationState {
     }
 
     /// Removes a notification by ID.
-    pub fn remove(&mut self, id: u32) -> Option<Notification> {
+    pub(crate) fn remove(&mut self, id: u32) -> Option<Notification> {
         if let Some(pos) = self.history.iter().position(|n| n.id == id) {
             self.active_popups.remove(&id);
             Some(self.history.remove(pos))
@@ -101,30 +101,30 @@ impl NotificationState {
     }
 
     /// Dismisses all notifications from a specific app.
-    pub fn dismiss_app(&mut self, app_name: &str) {
+    pub(crate) fn dismiss_app(&mut self, app_name: &str) {
         self.history.retain(|n| n.app_name != app_name);
     }
 
     /// Clears all notifications.
-    pub fn dismiss_all(&mut self) {
+    pub(crate) fn dismiss_all(&mut self) {
         self.history.clear();
         self.active_popups.clear();
     }
 
     /// Marks a notification as read.
-    pub fn mark_read(&mut self, id: u32) {
+    pub(crate) fn mark_read(&mut self, id: u32) {
         if let Some(notif) = self.history.iter_mut().find(|n| n.id == id) {
             notif.read = true;
         }
     }
 
     /// Returns the count of unread notifications.
-    pub fn unread_count(&self) -> usize {
+    pub(crate) fn unread_count(&self) -> usize {
         self.history.iter().filter(|n| !n.read).count()
     }
 
     /// Whether a popup should be shown for this urgency given current DND state.
-    pub fn should_show_popup(&self, urgency: Urgency) -> bool {
+    pub(crate) fn should_show_popup(&self, urgency: Urgency) -> bool {
         if !self.dnd {
             return true;
         }
@@ -133,7 +133,7 @@ impl NotificationState {
     }
 
     /// Groups notifications by app, preserving insertion order.
-    pub fn grouped_by_app(&self) -> Vec<AppGroup> {
+    pub(crate) fn grouped_by_app(&self) -> Vec<AppGroup> {
         let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut groups: Vec<AppGroup> = Vec::new();
 

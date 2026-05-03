@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 
 /// Popup display position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum PopupPosition {
+pub(crate) enum PopupPosition {
     TopRight,
     TopCenter,
     TopLeft,
@@ -18,14 +18,14 @@ pub enum PopupPosition {
 /// A macOS-style notification daemon for Hyprland/Sway.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "nwg-notifications", version, about)]
-pub struct NotificationConfig {
+pub(crate) struct NotificationConfig {
     /// Popup display position
     #[arg(long, value_enum, default_value_t = PopupPosition::TopRight)]
-    pub popup_position: PopupPosition,
+    pub(crate) popup_position: PopupPosition,
 
     /// Default popup timeout in ms (macOS uses ~7 seconds)
     #[arg(long, default_value_t = 7000)]
-    pub popup_timeout: u64,
+    pub(crate) popup_timeout: u64,
 
     /// Popup window width in pixels. Must be within
     /// `POPUP_WIDTH_MIN..=POPUP_WIDTH_MAX`; out-of-range values are rejected
@@ -35,7 +35,7 @@ pub struct NotificationConfig {
         value_parser = clap::value_parser!(i32).range((POPUP_WIDTH_MIN as i64)..=(POPUP_WIDTH_MAX as i64)),
         default_value_t = POPUP_WIDTH_DEFAULT,
     )]
-    pub popup_width: i32,
+    pub(crate) popup_width: i32,
 
     /// History panel width in pixels. Must be within
     /// `PANEL_WIDTH_MIN..=PANEL_WIDTH_MAX`; out-of-range values are rejected
@@ -45,36 +45,36 @@ pub struct NotificationConfig {
         value_parser = clap::value_parser!(i32).range((PANEL_WIDTH_MIN as i64)..=(PANEL_WIDTH_MAX as i64)),
         default_value_t = PANEL_WIDTH_DEFAULT,
     )]
-    pub panel_width: i32,
+    pub(crate) panel_width: i32,
 
     /// Maximum simultaneous popups
     #[arg(long, default_value_t = 5)]
-    pub max_popups: usize,
+    pub(crate) max_popups: usize,
 
     /// Maximum history entries to retain
     #[arg(long, default_value_t = 200)]
-    pub max_history: usize,
+    pub(crate) max_history: usize,
 
     /// Start in Do Not Disturb mode
     #[arg(long)]
-    pub dnd: bool,
+    pub(crate) dnd: bool,
 
     /// Persist notification history across restarts
     #[arg(long)]
-    pub persist: bool,
+    pub(crate) persist: bool,
 
     /// Turn on debug messages
     #[arg(long)]
-    pub debug: bool,
+    pub(crate) debug: bool,
 
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
-    pub wm: Option<nwg_common::compositor::WmOverride>,
+    pub(crate) wm: Option<nwg_common::compositor::WmOverride>,
 
     /// Print the current pending notification count and exit.
     /// Queries the running daemon over D-Bus; does not auto-start one if none is running.
     #[arg(long)]
-    pub count: bool,
+    pub(crate) count: bool,
 
     /// Push the values of any *also-passed* flags to the running daemon
     /// over D-Bus, then exit. Used by nwg-shell-config and shell scripts
@@ -84,14 +84,14 @@ pub struct NotificationConfig {
     /// startup-only flags (--persist, --wm, --debug) are silently ignored
     /// in this mode.
     #[arg(long)]
-    pub update: bool,
+    pub(crate) update: bool,
 }
 
 /// The set of clap arg IDs that are inherently live-updatable. Flags
 /// outside this set (e.g. `--persist`, `--wm`) are skipped in `--update`
 /// mode regardless of whether the user passed them, because pushing them
 /// to a running daemon is meaningless or unsafe.
-pub const LIVE_UPDATABLE_ARGS: &[&str] = &[
+pub(crate) const LIVE_UPDATABLE_ARGS: &[&str] = &[
     "popup_position",
     "popup_width",
     "panel_width",
@@ -105,7 +105,7 @@ pub const LIVE_UPDATABLE_ARGS: &[&str] = &[
 /// rather than relying on a default). Used by `--update` mode to push
 /// only what the user asked to change, so e.g. `--update --popup-position
 /// top-center` doesn't reset every other knob to its default.
-pub fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str> {
+pub(crate) fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str> {
     LIVE_UPDATABLE_ARGS
         .iter()
         .filter(|name| {

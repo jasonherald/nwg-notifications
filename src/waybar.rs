@@ -63,7 +63,7 @@ fn status_path() -> PathBuf {
 }
 
 /// Writes the waybar status file and signals waybar to refresh.
-pub fn update_status(unread: usize, dnd: bool) {
+pub(crate) fn update_status(unread: usize, dnd: bool) {
     let status = if dnd {
         WaybarStatus {
             text: ICON_BELL_OFF.into(),

@@ -11,7 +11,7 @@ const MAX_VISIBLE_PER_GROUP: usize = 3;
 ///
 /// Groups with more than MAX_VISIBLE_PER_GROUP notifications start collapsed,
 /// showing only the latest few. Click the group header to expand/collapse.
-pub fn build_grouped_list(
+pub(crate) fn build_grouped_list(
     container: &gtk4::Box,
     state: &Rc<RefCell<NotificationState>>,
     on_notification_click: Rc<dyn Fn(u32)>,
