@@ -257,9 +257,10 @@ pub(crate) fn push_panel_width(value: u32) -> Result<(), glib::Error> {
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
 /// - No daemon owns the `org.nwg.Notifications` name.
-/// - The daemon rejects the value with
-///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
-///   value outside the validated range for `--popup-timeout`).
+/// - The daemon rejects the payload type with
+///   `org.freedesktop.DBus.Error.InvalidArgs` (only fires on a
+///   non-`u32` payload — `handle_set_popup_timeout` does not enforce
+///   a value range, so any `u32` is accepted).
 /// - The daemon's running version doesn't expose `SetPopupTimeout`
 ///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
@@ -278,8 +279,10 @@ pub(crate) fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
 /// - The session bus isn't reachable.
 /// - No daemon owns the `org.nwg.Notifications` name.
 /// - The daemon rejects the value with
-///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
-///   value outside the validated range for `--max-popups`).
+///   `org.freedesktop.DBus.Error.InvalidArgs`. `handle_set_max_popups`
+///   only rejects two cases: a non-`u32` payload, and the literal
+///   value `0` ("max-popups must be >= 1"). No upper bound is enforced
+///   daemon-side.
 /// - The daemon's running version doesn't expose `SetMaxPopups`
 ///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_max_popups(value: u32) -> Result<(), glib::Error> {
@@ -298,8 +301,10 @@ pub(crate) fn push_max_popups(value: u32) -> Result<(), glib::Error> {
 /// - The session bus isn't reachable.
 /// - No daemon owns the `org.nwg.Notifications` name.
 /// - The daemon rejects the value with
-///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a
-///   value outside the validated range for `--max-history`).
+///   `org.freedesktop.DBus.Error.InvalidArgs`. `handle_set_max_history`
+///   only rejects two cases: a non-`u32` payload, and the literal
+///   value `0` ("max-history must be >= 1"). No upper bound is enforced
+///   daemon-side.
 /// - The daemon's running version doesn't expose `SetMaxHistory`
 ///   yet — surfaced as `org.freedesktop.DBus.Error.UnknownMethod`.
 pub(crate) fn push_max_history(value: u32) -> Result<(), glib::Error> {
@@ -307,9 +312,9 @@ pub(crate) fn push_max_history(value: u32) -> Result<(), glib::Error> {
 
 - [ ] **Step 3: Add `# Panics` to the two `register_*` helpers**
 
-In `src/dbus.rs`, find the two private `fn register_*` helpers (`register_notification_object` and `register_nwg_count_object`). Each contains three `.expect()` calls — XML parse, interface lookup, register-object build. Insert this docstring above each existing `fn` line.
+In `src/dbus.rs`, find the two private `fn register_*` helpers (`register_object` for the freedesktop interface and `register_nwg_count_object` for the nwg-private one). Each contains three `.expect()` calls — XML parse, interface lookup, register-object build. Insert this docstring above each existing `fn` line.
 
-`register_notification_object`:
+`register_object`:
 
 ```rust
 /// Registers the daemon's `org.freedesktop.Notifications` D-Bus
@@ -331,7 +336,7 @@ In `src/dbus.rs`, find the two private `fn register_*` helpers (`register_notifi
 ///   string literal and the interface info just came from the
 ///   parsed `const`, so any failure here would be a bug in `gio`'s
 ///   builder.
-fn register_notification_object(
+fn register_object(
 ```
 
 `register_nwg_count_object`:
