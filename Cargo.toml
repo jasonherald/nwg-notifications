@@ -15,7 +15,7 @@ name = "nwg-notifications"
 path = "src/main.rs"
 
 [dependencies]
-# Shared library (library + binaries all on the 0.3.x line)
+# Shared library (library + binaries all on the 0.4.x line)
 nwg-common = "0.4"
 
 # GTK4 + Wayland layer shell. `gtk4::gio` provides the D-Bus server
@@ -38,6 +38,7 @@ clap = { version = "4", features = ["derive"] }
 log = "0.4"
 env_logger = "0.11"
 
-# Unix signals and process management
-nix = { version = "0.31", features = ["signal", "process", "fs"] }
+# Raw signal numbers (libc::SIGRTMIN/SIGRTMAX) used by waybar.rs.
+# nix is no longer a direct dep — nwg-common pulls in the slice it
+# needs internally; we never call nix directly from this crate.
 libc = "0.2"

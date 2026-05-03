@@ -1,9 +1,9 @@
-pub mod constants;
-pub mod css;
-pub mod dnd_menu;
+pub(crate) mod constants;
+pub(crate) mod css;
+pub(crate) mod dnd_menu;
 mod icons;
-pub mod notification_row;
-pub mod panel;
-pub mod panel_content;
-pub mod popup;
-pub mod window;
+pub(crate) mod notification_row;
+pub(crate) mod panel;
+pub(crate) mod panel_content;
+pub(crate) mod popup;
+pub(crate) mod window;

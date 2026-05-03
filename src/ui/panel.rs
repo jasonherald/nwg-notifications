@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// The slide-out notification history panel.
-pub struct NotificationPanel {
-    pub win: gtk4::ApplicationWindow,
+pub(crate) struct NotificationPanel {
+    pub(crate) win: gtk4::ApplicationWindow,
     /// One transparent backdrop layer-shell surface per monitor.
     /// Layer-shell pins a surface to a single output, so covering
     /// multi-monitor click-outside-to-close requires one per monitor
@@ -31,7 +31,7 @@ pub struct NotificationPanel {
 
 impl NotificationPanel {
     /// Creates the panel window (starts hidden).
-    pub fn new(
+    pub(crate) fn new(
         app: &gtk4::Application,
         state: &Rc<RefCell<NotificationState>>,
         config: &Rc<RefCell<NotificationConfig>>,
@@ -139,7 +139,7 @@ impl NotificationPanel {
     }
 
     /// Toggles panel visibility with slide animation.
-    pub fn toggle(&self) {
+    pub(crate) fn toggle(&self) {
         if self.revealer.reveals_child() {
             hide_panel(&self.revealer, &self.win, &self.backdrops);
         } else {
@@ -176,12 +176,12 @@ impl NotificationPanel {
     }
 
     /// Returns whether the panel is currently visible.
-    pub fn is_visible(&self) -> bool {
+    pub(crate) fn is_visible(&self) -> bool {
         self.revealer.reveals_child()
     }
 
     /// Rebuilds the notification list content.
-    pub fn rebuild(&self) {
+    pub(crate) fn rebuild(&self) {
         rebuild_list(
             &self.list_box,
             &self.state,

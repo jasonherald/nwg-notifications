@@ -12,7 +12,7 @@ const TIMED_OPTIONS: &[(u64, &str)] = &[
 ];
 
 /// A small popup menu for DND options, triggered by right-clicking the waybar bell.
-pub struct DndMenu {
+pub(crate) struct DndMenu {
     win: gtk4::ApplicationWindow,
     /// One transparent backdrop layer-shell surface per monitor. Same
     /// rationale as `NotificationPanel::backdrops` — a single layer-shell
@@ -23,7 +23,7 @@ pub struct DndMenu {
 }
 
 impl DndMenu {
-    pub fn new(
+    pub(crate) fn new(
         app: &gtk4::Application,
         state: &Rc<RefCell<NotificationState>>,
         on_state_change: Rc<dyn Fn()>,
@@ -87,7 +87,7 @@ impl DndMenu {
         }
     }
 
-    pub fn toggle(&self) {
+    pub(crate) fn toggle(&self) {
         if self.win.is_visible() {
             self.win.set_visible(false);
             for backdrop in &self.backdrops {

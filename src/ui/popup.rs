@@ -20,7 +20,7 @@ struct ActivePopup {
 }
 
 /// Manages popup notification windows.
-pub struct PopupManager {
+pub(crate) struct PopupManager {
     popups: Vec<ActivePopup>,
     config: Rc<RefCell<NotificationConfig>>,
     app: gtk4::Application,
@@ -29,7 +29,7 @@ pub struct PopupManager {
 }
 
 impl PopupManager {
-    pub fn new(
+    pub(crate) fn new(
         app: &gtk4::Application,
         config: &Rc<RefCell<NotificationConfig>>,
         on_state_change: Rc<dyn Fn()>,
@@ -45,7 +45,7 @@ impl PopupManager {
     }
 
     /// Shows a popup for a notification. Respects max_popups limit.
-    pub fn show(&mut self, notif: &Notification, state: &Rc<RefCell<NotificationState>>) {
+    pub(crate) fn show(&mut self, notif: &Notification, state: &Rc<RefCell<NotificationState>>) {
         // Remove stale entries (windows closed by timer or click)
         self.popups.retain(|p| p.win.is_visible());
 
@@ -139,7 +139,7 @@ impl PopupManager {
     }
 
     /// Dismisses a popup by notification ID.
-    pub fn dismiss(&mut self, id: u32) {
+    pub(crate) fn dismiss(&mut self, id: u32) {
         if let Some(pos) = self.popups.iter().position(|p| p.id == id) {
             let popup = self.popups.remove(pos);
             popup.win.close();
@@ -158,7 +158,7 @@ impl PopupManager {
     /// own bookkeeping doesn't go out of sync. (Auto-dismiss timers
     /// scheduled for these popups will still fire later — they no-op
     /// against an already-closed window and an already-empty set.)
-    pub fn dismiss_all_popups(&mut self, state: &Rc<RefCell<NotificationState>>) {
+    pub(crate) fn dismiss_all_popups(&mut self, state: &Rc<RefCell<NotificationState>>) {
         for popup in self.popups.drain(..) {
             popup.win.close();
         }
@@ -324,7 +324,7 @@ fn focused_gdk_monitor(compositor: &dyn Compositor) -> Option<gtk4::gdk::Monitor
 ///
 /// Matches by: exact class, class contains app_name, or app_name contains class.
 /// This handles cases like app_name="Brave" matching class="brave-browser".
-pub fn focus_app(
+pub(crate) fn focus_app(
     app_name: &str,
     desktop_entry: Option<&str>,
     state: &Rc<RefCell<NotificationState>>,

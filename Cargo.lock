@@ -837,7 +837,6 @@ dependencies = [
  "gtk4-layer-shell",
  "libc",
  "log",
- "nix",
  "nwg-common",
  "serde",
  "serde_json",

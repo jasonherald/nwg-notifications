@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 /// Urgency level per freedesktop notification specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Urgency {
+pub(crate) enum Urgency {
     Low = 0,
     Normal = 1,
     Critical = 2,
@@ -21,18 +21,18 @@ impl From<u8> for Urgency {
 
 /// A single notification received via D-Bus.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Notification {
-    pub id: u32,
-    pub app_name: String,
-    pub app_icon: String,
-    pub summary: String,
-    pub body: String,
-    pub actions: Vec<(String, String)>,
-    pub urgency: Urgency,
-    pub timeout_ms: i32,
-    pub timestamp: SystemTime,
-    pub read: bool,
-    pub desktop_entry: Option<String>,
+pub(crate) struct Notification {
+    pub(crate) id: u32,
+    pub(crate) app_name: String,
+    pub(crate) app_icon: String,
+    pub(crate) summary: String,
+    pub(crate) body: String,
+    pub(crate) actions: Vec<(String, String)>,
+    pub(crate) urgency: Urgency,
+    pub(crate) timeout_ms: i32,
+    pub(crate) timestamp: SystemTime,
+    pub(crate) read: bool,
+    pub(crate) desktop_entry: Option<String>,
 }
 
 /// Strips HTML tags and decodes common entities from notification text.
@@ -40,7 +40,7 @@ pub struct Notification {
 /// The freedesktop notification spec allows a subset of HTML in the body
 /// (`<b>`, `<i>`, `<a href="...">`, `<br>`, etc.). We strip all tags and
 /// decode entities so the text displays cleanly in our GTK labels.
-pub fn clean_markup(text: &str) -> String {
+pub(crate) fn clean_markup(text: &str) -> String {
     // Strip HTML tags
     let mut result = String::with_capacity(text.len());
     let mut in_tag = false;
@@ -65,7 +65,7 @@ pub fn clean_markup(text: &str) -> String {
 
 /// Parses the flat actions array from D-Bus into (key, label) pairs.
 /// D-Bus format: ["action-id-1", "Label 1", "action-id-2", "Label 2"]
-pub fn parse_actions(flat: &[String]) -> Vec<(String, String)> {
+pub(crate) fn parse_actions(flat: &[String]) -> Vec<(String, String)> {
     flat.chunks(2)
         .filter_map(|chunk| {
             if chunk.len() == 2 {

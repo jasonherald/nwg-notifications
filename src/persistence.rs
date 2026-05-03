@@ -2,14 +2,14 @@ use crate::notification::Notification;
 use std::path::{Path, PathBuf};
 
 /// Returns the path to the notification history file.
-pub fn history_path() -> PathBuf {
+pub(crate) fn history_path() -> PathBuf {
     nwg_common::config::paths::cache_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("mac-notifications-history.json")
 }
 
 /// Loads notification history from disk.
-pub fn load_history(path: &Path) -> Vec<Notification> {
+pub(crate) fn load_history(path: &Path) -> Vec<Notification> {
     match std::fs::read_to_string(path) {
         Ok(json) => serde_json::from_str(&json).unwrap_or_else(|e| {
             log::warn!("Failed to parse notification history: {}", e);
@@ -20,7 +20,7 @@ pub fn load_history(path: &Path) -> Vec<Notification> {
 }
 
 /// Saves notification history to disk.
-pub fn save_history(path: &Path, history: &[Notification]) {
+pub(crate) fn save_history(path: &Path, history: &[Notification]) {
     match serde_json::to_string(history) {
         Ok(json) => {
             if let Err(e) = std::fs::write(path, json) {
