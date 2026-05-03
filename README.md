@@ -30,6 +30,7 @@ Claims `org.freedesktop.Notifications`, shows popup toasts, and ships a slide-ou
 - **Rust 1.95** or later (pinned in `rust-toolchain.toml`; rustup picks it up automatically)
 - **GTK4** and **gtk4-layer-shell** system libraries
 - A Wayland compositor with `wlr-layer-shell` support (Hyprland, Sway)
+- A working **session D-Bus** (every Linux desktop has this — calling it out because nwg-notifications is fundamentally a D-Bus daemon: it claims `org.freedesktop.Notifications` on the session bus, so installing only the binary without registering a D-Bus service file means apps can't reach it)
 
 ### Install system dependencies
 
@@ -44,25 +45,7 @@ sudo apt install libgtk-4-dev libgtk4-layer-shell-dev
 sudo dnf install gtk4-devel gtk4-layer-shell-devel
 ```
 
-### From crates.io (recommended for end users)
-
-```bash
-cargo install nwg-notifications
-```
-
-Lands the binary at `~/.cargo/bin/nwg-notifications`. `cargo install` doesn't ship the D-Bus service file — you'll need to write that yourself (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
-
-**After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
-
-```bash
-kill $(pidof nwg-notifications)
-# Your session manager (or D-Bus auto-activation on the next notify-send)
-# spawns the new binary. Or run `nwg-notifications --persist &` directly.
-```
-
-Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
-
-### `make install` — for source builds, distro packagers, and the `install-dbus` helper
+### `make install` — recommended (one-stop binary + D-Bus service file)
 
 The Makefile install path drops both the binary and the D-Bus service file (the latter always to user-scope, regardless of `PREFIX` — D-Bus user services are per-user by convention).
 
@@ -101,7 +84,27 @@ make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin
 
 (Or `sudo make upgrade` for system-wide installs — same prefix matching applies.)
 
-This is the recommended path for the source-build workflow once the daemon is already running. Cargo-install users don't have it; see the "After upgrading" note in the [From crates.io](#from-cratesio-recommended-for-end-users) subsection above for the manual equivalent.
+This is the recommended path for the source-build workflow once the daemon is already running. Cargo-install users don't have it; see the "After upgrading" note in the [From crates.io](#from-cratesio--rust-toolchain-alternative) subsection below for the manual equivalent.
+
+### From crates.io — Rust-toolchain alternative
+
+```bash
+cargo install nwg-notifications
+```
+
+This is the right path if you prefer the Rust toolchain workflow over `make install`. **Heads-up: this is a two-step install** — `cargo install` only places the binary at `~/.cargo/bin/nwg-notifications`, it doesn't create the D-Bus service file the daemon needs to be reachable. After running the command above, manually create the service file (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
+
+For the all-in-one experience, use the [`make install`](#make-install--recommended-one-stop-binary--d-bus-service-file) path above.
+
+**After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
+
+```bash
+kill $(pidof nwg-notifications)
+# Your session manager (or D-Bus auto-activation on the next notify-send)
+# spawns the new binary. Or run `nwg-notifications --persist &` directly.
+```
+
+Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
 
 ## Usage
 
