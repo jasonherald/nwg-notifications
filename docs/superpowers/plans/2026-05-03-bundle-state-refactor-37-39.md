@@ -568,7 +568,7 @@ The new `set_dnd_clears_stale_expiry_when_toggling_off` test should appear in th
 grep -rn "\.dnd\s*=\s*\|\.dnd_expires\s*=\s*" src/ --include="*.rs" | grep -v "tests"
 ```
 
-Expected: only one match — `src/main.rs:172` (the startup initialization `state.borrow_mut().dnd = config.borrow().dnd;`). That's the one direct write that intentionally stays — it sits inside `activate_notifications` before the daemon is wired up, has no `on_state_change` to fire, and `dnd_expires` is already `None` from `NotificationState::new`.
+Expected: only one match — the startup initialization `state.borrow_mut().dnd = config.borrow().dnd;` inside `activate_notifications` in `src/main.rs`. That's the one direct write that intentionally stays — it runs before the daemon is wired up, has no `on_state_change` to fire, and `dnd_expires` is already `None` from `NotificationState::new`.
 
 - [ ] **Step 11: Commit**
 
