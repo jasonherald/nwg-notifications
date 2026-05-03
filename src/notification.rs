@@ -40,6 +40,25 @@ pub(crate) struct Notification {
 /// The freedesktop notification spec allows a subset of HTML in the body
 /// (`<b>`, `<i>`, `<a href="...">`, `<br>`, etc.). We strip all tags and
 /// decode entities so the text displays cleanly in our GTK labels.
+/// Strips HTML-ish tags and decodes entities in notification body
+/// text per the [freedesktop notification spec][spec].
+///
+/// **Tag stripping:** uses a simple `in_tag` boolean state machine,
+/// so nested and interleaved tags (`<b><i>foo</i></b>`,
+/// `<b><i>foo</b></i>`) work correctly.
+///
+/// **Unmatched `<`:** an unclosed `<` flips the state machine to
+/// `in_tag` and never resets, so everything from the unmatched `<`
+/// to end-of-string is dropped. This matches the spec's expectation
+/// that body markup is valid; any other behavior would require
+/// lookahead or a real parser, which the daemon doesn't carry.
+///
+/// **Entities:** decodes the five spec-listed named entities
+/// (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`) plus `&#39;` for
+/// legacy convenience. Other numeric entities (`&#34;`, `&#x27;`,
+/// etc.) are not in the spec and pass through verbatim.
+///
+/// [spec]: https://specifications.freedesktop.org/notification-spec/latest/
 pub(crate) fn clean_markup(text: &str) -> String {
     // Strip HTML tags
     let mut result = String::with_capacity(text.len());
@@ -133,5 +152,47 @@ mod tests {
             clean_markup("From: <b>Alice</b> &lt;alice@example.com&gt;"),
             "From: Alice <alice@example.com>"
         );
+    }
+
+    #[test]
+    fn clean_markup_handles_nested_tags() {
+        // Properly nested
+        assert_eq!(clean_markup("<b><i>foo</i></b>"), "foo");
+        // Inner content with siblings
+        assert_eq!(clean_markup("<b>x<i>y</i>z</b>"), "xyz");
+    }
+
+    #[test]
+    fn clean_markup_handles_interleaved_tags() {
+        // Malformed but recoverable: in_tag is just a boolean,
+        // so the order of close-tags doesn't matter.
+        assert_eq!(clean_markup("<b><i>foo</b></i>"), "foo");
+        assert_eq!(clean_markup("<a><b>x</a></b>tail"), "xtail");
+    }
+
+    #[test]
+    fn clean_markup_unmatched_lt_swallows_to_end() {
+        // Documented behavior: an unclosed `<` flips in_tag and
+        // never resets, so everything after the `<` is dropped.
+        // Spec says body markup must be valid; this is the
+        // simplest deterministic fallback for invalid input.
+        assert_eq!(clean_markup("hello < world"), "hello ");
+        // Even if a `>` appears later inside what was meant to be
+        // a comparison, it gets consumed as a tag-close.
+        assert_eq!(clean_markup("a < b > c"), "a  c");
+    }
+
+    #[test]
+    fn clean_markup_passes_unsupported_numeric_entities_through() {
+        // Spec lists the five named entities. We additionally
+        // decode &#39; for legacy convenience but no other numeric
+        // form. Confirm that &#34; (would-be ") and &#x27; (hex
+        // single quote) survive untouched so a misbehaving app's
+        // text isn't silently mangled.
+        assert_eq!(clean_markup("a &#34; b"), "a &#34; b");
+        assert_eq!(clean_markup("a &#x27; b"), "a &#x27; b");
+        // The spec-listed forms still decode for sanity.
+        assert_eq!(clean_markup("a &quot; b"), "a \" b");
+        assert_eq!(clean_markup("a &#39; b"), "a ' b");
     }
 }
