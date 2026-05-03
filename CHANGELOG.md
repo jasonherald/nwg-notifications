@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.3.5] — Unreleased
+
+### Fixed
+
+- Four post-v0.3.4 correctness bugs surfaced by the comprehensive
+  code-quality review (epic #29):
+  - `--update --max-history N` now actually changes the trim cap
+    instead of waiting for daemon restart. `trim_history()` reads
+    `max_history` from the live config rather than a state-side copy
+    seeded once at startup. (#30)
+  - Re-clicking a different timed-DND duration before the first
+    timer fires no longer leaves the older one armed and clearing
+    DND early. Each scheduled timer now captures its expiry as a
+    token and no-ops silently if the live expiry has been replaced
+    by a newer schedule. (#31)
+  - `org.freedesktop.Notifications.GetServerInformation` now returns
+    the real vendor (`nwg-notifications`) and version (from
+    `CARGO_PKG_VERSION`). Previously reported vendor
+    `nwg-dock-hyprland` and version `0.1.0` — both pre-split
+    monorepo leftovers visible to any client app or notification
+    debugger. (#32)
+  - Waybar refresh signal is now computed from `libc::SIGRTMIN()` at
+    runtime instead of hardcoded to 45 (which was wrong on musl,
+    where `SIGRTMIN+11 = 46`). musl users were silently sending the
+    wrong signal to waybar. (#33)
+
 ## [0.3.4] — 2026-05-03
 
 ### Fixed
