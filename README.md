@@ -54,11 +54,11 @@ Lands the binary at `~/.cargo/bin/nwg-notifications`. `cargo install` doesn't sh
 
 **After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
 
-````bash
+```bash
 kill $(pidof nwg-notifications)
 # Your session manager (or D-Bus auto-activation on the next notify-send)
 # spawns the new binary. Or run `nwg-notifications --persist &` directly.
-````
+```
 
 Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
 
