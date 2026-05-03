@@ -1,6 +1,11 @@
 use serde::Serialize;
 use std::path::PathBuf;
 
+/// Offset above `SIGRTMIN` that waybar's notification module listens on.
+/// Kept as a single named constant so the implementation and its test
+/// can't drift apart.
+const WAYBAR_REFRESH_SIGNAL_OFFSET: i32 = 11;
+
 /// Returns the runtime signal number for the waybar refresh signal
 /// (SIGRTMIN+11). Computed from `libc::SIGRTMIN()` rather than hardcoded
 /// because the value differs across libc implementations: glibc reserves
@@ -10,7 +15,7 @@ use std::path::PathBuf;
 /// internally; we duplicate the call here rather than depend on a
 /// (currently private) helper there. See #33.
 fn waybar_refresh_signal() -> i32 {
-    libc::SIGRTMIN() + 11
+    libc::SIGRTMIN() + WAYBAR_REFRESH_SIGNAL_OFFSET
 }
 
 #[derive(Serialize)]
@@ -109,10 +114,14 @@ mod tests {
     }
 
     #[test]
-    fn waybar_refresh_signal_is_sigrtmin_plus_11() {
+    fn waybar_refresh_signal_is_sigrtmin_plus_offset() {
         let s = waybar_refresh_signal();
         let base = libc::SIGRTMIN();
-        assert_eq!(s, base + 11, "expected SIGRTMIN({base}) + 11, got {s}");
+        assert_eq!(
+            s,
+            base + WAYBAR_REFRESH_SIGNAL_OFFSET,
+            "expected SIGRTMIN({base}) + {WAYBAR_REFRESH_SIGNAL_OFFSET}, got {s}"
+        );
         // Cross-check that the value is in the RT-signal range. SIGRTMIN
         // is at minimum 33 on Linux; SIGRTMAX is at most 64. SIGRTMIN+11
         // must fit comfortably below SIGRTMAX even on the more
