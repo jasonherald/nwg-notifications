@@ -1,3 +1,10 @@
+//! D-Bus server for the notification daemon. Claims
+//! `org.freedesktop.Notifications` (the freedesktop-spec interface)
+//! and `org.nwg.Notifications` (the project-private interface used
+//! by `nwg-shell-config` and `nwg-panel` for live config + count
+//! IPC). Runs directly on the glib main loop via
+//! `gio::bus_own_name`; no async bridge.
+
 use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency, clean_markup, parse_actions};
 use crate::state::NotificationState;

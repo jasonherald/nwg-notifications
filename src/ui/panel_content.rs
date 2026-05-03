@@ -1,3 +1,9 @@
+//! Panel-content builder. `build_grouped_list` consumes the
+//! current `NotificationState` and produces the GTK widget tree
+//! shown inside the history panel — one section per app, each
+//! containing the notification rows produced by
+//! `super::notification_row`.
+
 use super::notification_row;
 use crate::state::NotificationState;
 use gtk4::prelude::*;

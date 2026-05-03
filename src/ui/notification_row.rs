@@ -1,3 +1,9 @@
+//! History-panel notification row widget. `build_row` composes the
+//! per-notification GTK row (icon, summary, body, relative
+//! timestamp, dismiss button) shown inside the slide-out panel's
+//! grouped list. `relative_time_from_elapsed` formats the row's
+//! age label.
+
 use super::constants::{PANEL_BODY_CHARS, PANEL_BODY_LINES, PANEL_ICON_SIZE, PANEL_SUMMARY_CHARS};
 use crate::notification::Notification;
 use gtk4::prelude::*;

@@ -1,3 +1,8 @@
+//! Slide-out history panel. A layer-shell window pinned to the
+//! right edge of the screen showing every notification grouped by
+//! app, with a backdrop click-out target. `NotificationPanel`
+//! owns the show / hide / rebuild lifecycle.
+
 use super::constants::PANEL_REVEAL_DURATION_MS;
 use super::panel_content;
 use crate::config::NotificationConfig;

@@ -1,3 +1,9 @@
+//! Auto-dismissing popup toasts. `PopupManager` owns the per-popup
+//! windows, the position-aware stacking logic, and the timeout
+//! that closes each popup after the configured `--popup-timeout`.
+//! `focus_app` deep-links from a popup click to the notifying
+//! application via the compositor's `focus_window` IPC.
+
 use super::constants::{
     POPUP_BODY_CHARS, POPUP_GAP, POPUP_ICON_SIZE, POPUP_MAX_BODY_LINES, POPUP_PADDING,
     POPUP_SUMMARY_CHARS, POPUP_TOP_MARGIN,

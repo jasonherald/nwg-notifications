@@ -1,3 +1,9 @@
+//! Signal-thread → mpsc → glib timeout bridge. A dedicated thread
+//! waits on `SIGRTMIN+4` (toggle panel), `SIGRTMIN+5` (toggle DND),
+//! and `SIGRTMIN+6` (DND duration menu); the main glib loop polls
+//! the receiver via `glib::timeout_add_local` so the side effects
+//! happen on the GTK thread.
+
 use crate::state::NotificationState;
 use crate::ui::dnd_menu;
 use crate::ui::panel::NotificationPanel;

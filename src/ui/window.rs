@@ -1,3 +1,9 @@
+//! Layer-shell window setup helpers. `setup_popup_window` configures
+//! a popup `ApplicationWindow` with the right `gtk4-layer-shell`
+//! anchors and margins for its `PopupPosition`. Also exports the
+//! backdrop-window helper used by panel and DND menu for
+//! click-outside-to-close.
+
 use crate::config::PopupPosition;
 use gtk4_layer_shell::LayerShell;
 

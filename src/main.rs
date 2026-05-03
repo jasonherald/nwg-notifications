@@ -1,3 +1,8 @@
+//! Coordinator: wires daemon state, popup manager, panel, D-Bus
+//! server, and signal listener. Owns the GTK `Application` and the
+//! short-circuit CLI modes (`--count`, `--update`) that exit before
+//! claiming the singleton lock.
+
 mod config;
 mod dbus;
 mod listeners;

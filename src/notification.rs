@@ -1,3 +1,7 @@
+//! `Notification`, `Urgency`, and the freedesktop-spec helpers for
+//! body-markup stripping (`clean_markup`) and action-list parsing
+//! (`parse_actions`).
+
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
