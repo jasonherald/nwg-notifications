@@ -102,8 +102,11 @@ pub(crate) fn build_row(
     row
 }
 
-fn relative_time(timestamp: SystemTime) -> String {
-    let elapsed = timestamp.elapsed().unwrap_or_default();
+/// Pure helper: formats an elapsed `Duration` as the relative-time
+/// string shown in the panel ("now" / "Nm" / "Nh" / "Nd"). Split out
+/// so tests can pass exact `Duration` values rather than fight the
+/// wall-clock via `SystemTime::now()`.
+fn relative_time_from_elapsed(elapsed: std::time::Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 60 {
         "now".into()
@@ -113,5 +116,74 @@ fn relative_time(timestamp: SystemTime) -> String {
         format!("{}h", secs / 3600)
     } else {
         format!("{}d", secs / 86400)
+    }
+}
+
+fn relative_time(timestamp: SystemTime) -> String {
+    relative_time_from_elapsed(timestamp.elapsed().unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn now_branch_under_60s() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(0)), "now");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(1)), "now");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(59)), "now");
+    }
+
+    #[test]
+    fn minutes_branch_60s_to_under_3600s() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(60)), "1m");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(150)), "2m");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(3599)), "59m");
+    }
+
+    #[test]
+    fn hours_branch_3600s_to_under_86400s() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(3600)), "1h");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(7200)), "2h");
+        assert_eq!(
+            relative_time_from_elapsed(Duration::from_secs(86399)),
+            "23h"
+        );
+    }
+
+    #[test]
+    fn days_branch_at_or_above_86400s() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(86400)), "1d");
+        assert_eq!(
+            relative_time_from_elapsed(Duration::from_secs(172800)),
+            "2d"
+        );
+        // Arbitrary large value — confirms no overflow surprise.
+        assert_eq!(
+            relative_time_from_elapsed(Duration::from_secs(86400 * 365)),
+            "365d"
+        );
+    }
+
+    #[test]
+    fn boundary_60s_transitions_now_to_1m() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(59)), "now");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(60)), "1m");
+    }
+
+    #[test]
+    fn boundary_3600s_transitions_minutes_to_1h() {
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(3599)), "59m");
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(3600)), "1h");
+    }
+
+    #[test]
+    fn boundary_86400s_transitions_hours_to_1d() {
+        assert_eq!(
+            relative_time_from_elapsed(Duration::from_secs(86399)),
+            "23h"
+        );
+        assert_eq!(relative_time_from_elapsed(Duration::from_secs(86400)), "1d");
     }
 }
