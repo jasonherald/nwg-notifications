@@ -42,10 +42,10 @@ pub(crate) fn status_path() -> PathBuf {
 
 /// Returns a directory the current user owns and can write to.
 /// Tries `cache_dir()` first; if that fails (no `$HOME`, no
-/// `$XDG_CACHE_HOME`), creates and returns
-/// `/tmp/nwg-notifications-<uid>/` with mode `0700`. The per-UID
-/// subdirectory bounds two attacks that the previous bare-`/tmp`
-/// fallback was vulnerable to:
+/// `$XDG_CACHE_HOME`, and no `/etc/passwd` entry resolvable via
+/// `getpwuid_r`), creates and returns `/tmp/nwg-notifications-<uid>/`
+/// with mode `0700`. The per-UID subdirectory bounds two attacks
+/// that the previous bare-`/tmp` fallback was vulnerable to:
 /// - **Symlink-clobber on write.** An attacker who can predict the
 ///   filename `/tmp/mac-notifications-history.json` could
 ///   pre-create it as a symlink to a victim file before the daemon
@@ -57,7 +57,15 @@ pub(crate) fn status_path() -> PathBuf {
 ///   world-readable. Mode `0700` on the parent dir blocks reads
 ///   regardless of file mode.
 fn fallback_user_dir() -> PathBuf {
-    if let Some(dir) = nwg_common::config::paths::cache_dir() {
+    fallback_user_dir_from(nwg_common::config::paths::cache_dir())
+}
+
+/// Inner helper: parameterized over the resolved cache dir so unit
+/// tests can simulate the "no cache dir" branch without mocking
+/// the global `dirs::cache_dir()` lookup (which traverses
+/// `/etc/passwd` and is hard to neutralize via env vars alone).
+fn fallback_user_dir_from(cache_dir: Option<PathBuf>) -> PathBuf {
+    if let Some(dir) = cache_dir {
         return dir;
     }
     // SAFETY: `getuid()` is documented to always succeed and never
@@ -80,4 +88,114 @@ fn fallback_user_dir() -> PathBuf {
         );
     }
     dir
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Env-var manipulation is process-global, so the four cases
+    /// must run serially. A single test function with an internal
+    /// mutex guard is simpler than pulling in `serial_test` and
+    /// keeps every assertion in one self-contained scope.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<R>(history_overrides: &[(&str, Option<&str>)], body: impl FnOnce() -> R) -> R {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+        // Snapshot the vars we touch so we can restore them.
+        let mut snapshot: Vec<(&str, Option<String>)> = Vec::new();
+        for (key, _) in history_overrides {
+            snapshot.push((key, std::env::var(key).ok()));
+        }
+        // Apply overrides.
+        for (key, value) in history_overrides {
+            // SAFETY: env mutation is unsafe in Rust 2024; the
+            // ENV_LOCK Mutex serializes our four test cases so no
+            // other thread is racing. Other tests in the crate
+            // don't touch these vars.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+        let result = body();
+        // Restore.
+        for (key, original) in snapshot {
+            unsafe {
+                match original {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn path_helpers_use_xdg_dirs_when_available_and_per_user_fallback_otherwise() {
+        let tmpdir = std::env::temp_dir().join(format!("nwg-paths-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmpdir).expect("setup tmpdir");
+        let runtime = tmpdir.join("runtime");
+        let cache = tmpdir.join("cache");
+        std::fs::create_dir_all(&runtime).expect("setup runtime");
+        std::fs::create_dir_all(&cache).expect("setup cache");
+
+        // Case 1: XDG_RUNTIME_DIR set → status_path uses it.
+        let actual = with_env(
+            &[("XDG_RUNTIME_DIR", Some(runtime.to_str().unwrap()))],
+            status_path,
+        );
+        assert_eq!(actual, runtime.join("mac-notifications-status.json"));
+
+        // Case 2: XDG_CACHE_HOME set → history_path uses it.
+        // (cache_dir() reads XDG_CACHE_HOME first.)
+        let actual = with_env(
+            &[("XDG_CACHE_HOME", Some(cache.to_str().unwrap()))],
+            history_path,
+        );
+        assert_eq!(actual, cache.join("mac-notifications-history.json"));
+
+        // Case 3: XDG_RUNTIME_DIR unset, XDG_CACHE_HOME set →
+        // status_path falls back through cache_dir.
+        let actual = with_env(
+            &[
+                ("XDG_RUNTIME_DIR", None),
+                ("XDG_CACHE_HOME", Some(cache.to_str().unwrap())),
+            ],
+            status_path,
+        );
+        assert_eq!(actual, cache.join("mac-notifications-status.json"));
+
+        // Case 4: cache_dir resolves to None (truly degraded — no
+        // $HOME, no $XDG_CACHE_HOME, no /etc/passwd entry) → per-UID
+        // /tmp sandbox via fallback_user_dir_from(None). We can't
+        // induce that None reliably with env-var manipulation
+        // (dirs::cache_dir falls back through /etc/passwd via
+        // getpwuid_r, so unsetting HOME doesn't suffice), so test
+        // the parameterized inner helper directly.
+        // SAFETY: getuid() is always-succeed POSIX FFI.
+        let uid = unsafe { libc::getuid() };
+        let actual = fallback_user_dir_from(None);
+        let expected = PathBuf::from("/tmp").join(format!("nwg-notifications-{uid}"));
+        assert_eq!(actual, expected);
+
+        // Sanity: the fallback dir was created with mode 0700.
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&actual)
+            .expect("fallback dir created")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "fallback dir must be mode 0700 to bound cross-user reads, got {:o}",
+            mode
+        );
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&tmpdir);
+    }
 }
