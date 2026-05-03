@@ -28,6 +28,17 @@ fn main() {
     let config = NotificationConfig::from_arg_matches(&matches)
         .expect("clap should produce a valid NotificationConfig from successful matches");
 
+    // Initialize logging before any early-exit CLI mode (--count, --update) so
+    // their error paths can reach log::error! per the project's "log errors"
+    // convention. Idempotent here — daemon mode reads the same config.debug.
+    if config.debug {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+    } else {
+        env_logger::init();
+    }
+
     if config.count {
         match dbus::query_count_via_dbus() {
             Ok(count) => {
@@ -35,6 +46,7 @@ fn main() {
                 std::process::exit(0);
             }
             Err(e) => {
+                log::error!("Failed to query count: {}", e);
                 eprintln!("Failed to query count: {}", e);
                 eprintln!("(is the nwg-notifications daemon running?)");
                 std::process::exit(1);
@@ -71,21 +83,30 @@ fn main() {
                 _ => unreachable!("user_set_live_args returns only known names"),
             };
             if let Err(e) = push_result {
-                eprintln!("Failed to update {}: {}", name, e);
+                if dbus::is_unknown_method_error(&e) {
+                    log::error!(
+                        "Failed to update {} (unknown D-Bus method on running daemon): {}",
+                        name,
+                        e
+                    );
+                    eprintln!(
+                        "Failed to update {name}: the running daemon doesn't recognise this D-Bus method.\n\
+                         This usually means the daemon is from a release older than this CLI.\n\
+                         Restart it to pick up the new methods, e.g.:\n  \
+                         kill $(pidof nwg-notifications) 2>/dev/null || true\n\
+                         and let your session manager respawn it (or just run `nwg-notifications --persist &` yourself).\n\
+                         Underlying error: {e}"
+                    );
+                } else {
+                    log::error!("Failed to update {}: {}", name, e);
+                    eprintln!("Failed to update {name}: {e}");
+                }
                 had_error = true;
             } else {
-                println!("Updated {}", name);
+                println!("Updated {name}");
             }
         }
         std::process::exit(if had_error { 1 } else { 0 });
-    }
-
-    if config.debug {
-        env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Debug)
-            .init();
-    } else {
-        env_logger::init();
     }
 
     let _lock = match singleton::acquire_lock("mac-notifications") {
