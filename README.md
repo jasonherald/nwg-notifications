@@ -78,13 +78,17 @@ make install-dbus
 
 For source-build users on an already-installed setup, `make upgrade` does the whole replace-and-respawn cycle in one command. It builds release, validates that the running daemon's binary path matches where this `make upgrade` would install (refusing to proceed on a prefix mismatch so you don't end up with a dead daemon), captures the running daemon's args via `--dump-args`, sends `SIGTERM`, installs the new binary, and respawns with the same args.
 
+**The recommended dev/test recipe — drops the binary at `~/.cargo/bin/nwg-notifications` (the same place `cargo install` would put it), no sudo:**
+
 ```bash
 make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin
 ```
 
-(Or `sudo make upgrade` for system-wide installs — same prefix matching applies.)
+This is what we use to dogfood every PR — install once, then `make upgrade PREFIX=... BINDIR=...` for every iteration. It also doubles as the upgrade path for users who originally installed via `cargo install nwg-notifications`: keep a source clone, run `make upgrade` against `~/.cargo/bin`, and you get the rebuild + install + restart loop without the manual kill-and-respawn dance.
 
-This is the recommended path for the source-build workflow once the daemon is already running. Cargo-install users don't have it; see the "After upgrading" note in the [From crates.io](#from-cratesio--rust-toolchain-alternative) subsection below for the manual equivalent.
+For system-wide installs use `sudo make upgrade` (or `sudo make upgrade PREFIX=/usr` for distro-parity) — same prefix-matching guard applies, refusing to proceed if the running daemon lives somewhere else.
+
+Cargo-install users without a source clone should use the manual equivalent — see the "After upgrading" note in the [From crates.io](#from-cratesio--rust-toolchain-alternative) subsection below.
 
 ### From crates.io — Rust-toolchain alternative
 
@@ -103,6 +107,8 @@ kill $(pidof nwg-notifications)
 # Your session manager (or D-Bus auto-activation on the next notify-send)
 # spawns the new binary. Or run `nwg-notifications --persist &` directly.
 ```
+
+If you happen to have a source clone of the repo as well, [`make upgrade PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin`](#make-install--recommended-one-stop-binary--d-bus-service-file) automates the whole replace-and-respawn cycle (and preserves the running daemon's args).
 
 Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
 
