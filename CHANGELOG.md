@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.3.4] — Unreleased
+
+### Fixed
+
+- `--update` now prints an actionable error when it calls a D-Bus
+  method the running daemon doesn't recognise — typically because the
+  daemon is from a release older than the CLI. Previously the raw
+  `GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod` text bubbled
+  to the user, which didn't hint at the restart-after-upgrade fix.
+  Other error classes (no daemon, timeout, payload type) keep their
+  existing format. (#25)
+
 ## [0.3.3] — 2026-04-29
 
 ### Fixed

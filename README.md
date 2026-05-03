@@ -52,6 +52,16 @@ cargo install nwg-notifications
 
 Lands the binary at `~/.cargo/bin/nwg-notifications`. `cargo install` doesn't ship the D-Bus service file — you'll need to write that yourself (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
 
+**After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
+
+````bash
+kill $(pidof nwg-notifications)
+# Your session manager (or D-Bus auto-activation on the next notify-send)
+# spawns the new binary. Or run `nwg-notifications --persist &` directly.
+````
+
+Without this, `--update` and `gdbus call` against newly-shipped methods fail with `org.freedesktop.DBus.Error.UnknownMethod`.
+
 ### `make install` — for source builds, distro packagers, and the `install-dbus` helper
 
 The Makefile install path drops both the binary and the D-Bus service file (the latter always to user-scope, regardless of `PREFIX` — D-Bus user services are per-user by convention).
