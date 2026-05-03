@@ -246,7 +246,7 @@ Find the "From crates.io" install subsection in `README.md`. After its existing 
 **After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
 
 ```bash
-kill $(pidof nwg-notifications)
+kill $(pidof nwg-notifications) 2>/dev/null || true
 # Your session manager (or D-Bus auto-activation on the next notify-send)
 # spawns the new binary. Or run `nwg-notifications --persist &` directly.
 ```
@@ -322,7 +322,7 @@ Tell the user (verbatim or close):
 >    To exercise the *CLI* error path against the same condition, we'd need an old-binary daemon — most reliable repro is to ask OG to test against his old daemon, or to temporarily run the previous-release binary as the daemon while invoking the new `--update`. Skip if you'd rather just trust the unit tests for the predicate; the message wording is straightforward to eyeball in `src/main.rs`.
 >
 > 3. **Other error classes still use the generic format (no actionable hint):**
->    - `kill $(pidof nwg-notifications) 2>/dev/null` → daemon stops.
+>    - `kill $(pidof nwg-notifications) 2>/dev/null || true` → daemon stops.
 >    - `nwg-notifications --update --popup-position top-center` → expect `Failed to update popup_position: <NoSuchName error>` *without* the multi-line restart hint (because this is a no-daemon error, not UnknownMethod).
 >    - Restart back to default: `uwsm-app -- nwg-notifications --persist >/dev/null 2>&1 & disown`
 >
