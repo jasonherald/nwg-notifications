@@ -292,11 +292,90 @@ fn handle_nwg_count_method(
         "SetPopupPosition" => {
             handle_set_popup_position(params, invocation, config, on_state_change)
         }
-        "SetPopupWidth" => handle_set_popup_width(params, invocation, config, on_state_change),
-        "SetPanelWidth" => handle_set_panel_width(params, invocation, config, on_state_change),
-        "SetPopupTimeout" => handle_set_popup_timeout(params, invocation, config, on_state_change),
-        "SetMaxPopups" => handle_set_max_popups(params, invocation, config, on_state_change),
-        "SetMaxHistory" => handle_set_max_history(params, invocation, config, on_state_change),
+        "SetPopupWidth" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPopupWidth",
+            |raw, cfg| {
+                let v = i32::try_from(raw)
+                    .map_err(|_| format!("popup-width {raw} exceeds i32::MAX"))?;
+                if !(crate::ui::constants::POPUP_WIDTH_MIN..=crate::ui::constants::POPUP_WIDTH_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "popup-width {v} is not in {min}..={max}",
+                        min = crate::ui::constants::POPUP_WIDTH_MIN,
+                        max = crate::ui::constants::POPUP_WIDTH_MAX,
+                    ));
+                }
+                cfg.popup_width = v;
+                Ok(())
+            },
+        ),
+        "SetPanelWidth" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPanelWidth",
+            |raw, cfg| {
+                let v = i32::try_from(raw)
+                    .map_err(|_| format!("panel-width {raw} exceeds i32::MAX"))?;
+                if !(crate::ui::constants::PANEL_WIDTH_MIN..=crate::ui::constants::PANEL_WIDTH_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "panel-width {v} is not in {min}..={max}",
+                        min = crate::ui::constants::PANEL_WIDTH_MIN,
+                        max = crate::ui::constants::PANEL_WIDTH_MAX,
+                    ));
+                }
+                cfg.panel_width = v;
+                Ok(())
+            },
+        ),
+        "SetPopupTimeout" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPopupTimeout",
+            |raw, cfg| {
+                // 0 is a valid value (means "never auto-dismiss").
+                cfg.popup_timeout = u64::from(raw);
+                Ok(())
+            },
+        ),
+        "SetMaxPopups" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetMaxPopups",
+            |raw, cfg| {
+                if raw == 0 {
+                    return Err("max-popups must be >= 1".to_string());
+                }
+                cfg.max_popups = raw as usize;
+                Ok(())
+            },
+        ),
+        "SetMaxHistory" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetMaxHistory",
+            |raw, cfg| {
+                if raw == 0 {
+                    return Err("max-history must be >= 1".to_string());
+                }
+                cfg.max_history = raw as usize;
+                Ok(())
+            },
+        ),
         _ => {
             log::warn!("Unknown nwg-count D-Bus method: {}", method);
             invocation.return_dbus_error(
@@ -309,6 +388,48 @@ fn handle_nwg_count_method(
 
 fn return_invalid_args(invocation: gio::DBusMethodInvocation, msg: &str) {
     invocation.return_dbus_error("org.freedesktop.DBus.Error.InvalidArgs", msg);
+}
+
+/// Generic handler for any `u32`-valued live-config setter on
+/// `org.nwg.Notifications`. Decodes the first param as `u32`, hands
+/// it to the `apply` closure (which validates and writes into
+/// `NotificationConfig`), and bridges the result back to the D-Bus
+/// invocation: `Ok(())` returns success and fires `on_state_change`,
+/// `Err(msg)` returns `org.freedesktop.DBus.Error.InvalidArgs` with
+/// the supplied message.
+///
+/// `method_name` is used only for the wrong-type error message
+/// (e.g. `"SetMaxPopups expects a uint32 argument"`); pass the bare
+/// D-Bus method name without quoting.
+fn handle_set_u32(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+    method_name: &str,
+    apply: impl FnOnce(u32, &mut NotificationConfig) -> Result<(), String>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(
+                invocation,
+                &format!("{method_name} expects a uint32 argument"),
+            );
+            return;
+        }
+    };
+    let result = {
+        let mut cfg = config.borrow_mut();
+        apply(raw, &mut cfg)
+    };
+    match result {
+        Ok(()) => {
+            invocation.return_value(None);
+            on_state_change();
+        }
+        Err(msg) => return_invalid_args(invocation, &msg),
+    }
 }
 
 fn handle_set_popup_position(
@@ -340,145 +461,6 @@ fn handle_set_popup_position(
             );
         }
     }
-}
-
-fn handle_set_popup_width(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPopupWidth expects a uint32 argument");
-            return;
-        }
-    };
-    let raw_i32 = match i32::try_from(raw) {
-        Ok(v) => v,
-        Err(_) => {
-            return_invalid_args(invocation, &format!("popup-width {raw} exceeds i32::MAX"));
-            return;
-        }
-    };
-    if !(crate::ui::constants::POPUP_WIDTH_MIN..=crate::ui::constants::POPUP_WIDTH_MAX)
-        .contains(&raw_i32)
-    {
-        return_invalid_args(
-            invocation,
-            &format!(
-                "popup-width {raw_i32} is not in {min}..={max}",
-                min = crate::ui::constants::POPUP_WIDTH_MIN,
-                max = crate::ui::constants::POPUP_WIDTH_MAX,
-            ),
-        );
-        return;
-    }
-    config.borrow_mut().popup_width = raw_i32;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_panel_width(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPanelWidth expects a uint32 argument");
-            return;
-        }
-    };
-    let raw_i32 = match i32::try_from(raw) {
-        Ok(v) => v,
-        Err(_) => {
-            return_invalid_args(invocation, &format!("panel-width {raw} exceeds i32::MAX"));
-            return;
-        }
-    };
-    if !(crate::ui::constants::PANEL_WIDTH_MIN..=crate::ui::constants::PANEL_WIDTH_MAX)
-        .contains(&raw_i32)
-    {
-        return_invalid_args(
-            invocation,
-            &format!(
-                "panel-width {raw_i32} is not in {min}..={max}",
-                min = crate::ui::constants::PANEL_WIDTH_MIN,
-                max = crate::ui::constants::PANEL_WIDTH_MAX,
-            ),
-        );
-        return;
-    }
-    config.borrow_mut().panel_width = raw_i32;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_popup_timeout(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPopupTimeout expects a uint32 argument");
-            return;
-        }
-    };
-    // 0 is a valid value (means "never auto-dismiss").
-    config.borrow_mut().popup_timeout = u64::from(raw);
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_max_popups(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetMaxPopups expects a uint32 argument");
-            return;
-        }
-    };
-    if raw == 0 {
-        return_invalid_args(invocation, "max-popups must be >= 1");
-        return;
-    }
-    config.borrow_mut().max_popups = raw as usize;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_max_history(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetMaxHistory expects a uint32 argument");
-            return;
-        }
-    };
-    if raw == 0 {
-        return_invalid_args(invocation, "max-history must be >= 1");
-        return;
-    }
-    config.borrow_mut().max_history = raw as usize;
-    invocation.return_value(None);
-    on_state_change();
 }
 
 fn handle_notify(
