@@ -100,11 +100,8 @@ pub(crate) fn poll_signals(
                 }
                 NotificationCommand::ToggleDnd => {
                     let new_dnd = !state.borrow().dnd;
-                    state.borrow_mut().dnd = new_dnd;
-                    log::info!(
-                        "DND {} via signal",
-                        if new_dnd { "enabled" } else { "disabled" }
-                    );
+                    state.borrow_mut().set_dnd(new_dnd, None);
+                    log::debug!("DND toggled via signal");
                     on_change();
                 }
                 NotificationCommand::ShowDndMenu => {

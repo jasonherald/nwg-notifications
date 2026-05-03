@@ -117,6 +117,22 @@ impl NotificationState {
         self.active_popups.clear();
     }
 
+    /// Sets DND mode and (optionally) the timed-DND expiry, then
+    /// logs the transition. The single writer for the `dnd` and
+    /// `dnd_expires` fields — every UI / signal / timer call site
+    /// routes through this so the two fields can never drift.
+    ///
+    /// Pass `expires = None` for a permanent toggle (the panel
+    /// header button, the signal handler, the menu's "until I turn
+    /// it off" entry, and the timer-fire that clears expired DND).
+    /// Pass `expires = Some(deadline)` only for the timed-DND menu
+    /// buttons that arm a `glib::timeout_add_local_once`.
+    pub(crate) fn set_dnd(&mut self, enabled: bool, expires: Option<std::time::SystemTime>) {
+        self.dnd = enabled;
+        self.dnd_expires = expires;
+        log::info!("DND {}", if enabled { "enabled" } else { "disabled" });
+    }
+
     /// Marks a notification as read.
     pub(crate) fn mark_read(&mut self, id: u32) {
         if let Some(notif) = self.history.iter_mut().find(|n| n.id == id) {
@@ -250,10 +266,39 @@ mod tests {
     #[test]
     fn dnd_suppresses_normal_popups() {
         let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
-        state.dnd = true;
+        state.set_dnd(true, None);
         assert!(!state.should_show_popup(Urgency::Normal));
         assert!(!state.should_show_popup(Urgency::Low));
         assert!(state.should_show_popup(Urgency::Critical));
+    }
+
+    #[test]
+    fn set_dnd_clears_stale_expiry_when_toggling_off() {
+        // Bug fix from #37: before the set_dnd helper landed, the
+        // signal handler in listeners.rs and the panel-header button
+        // in ui/panel.rs both flipped state.dnd directly without
+        // touching dnd_expires. So a user who armed timed DND from
+        // the menu (sets dnd=true + Some(expiry)) and then toggled
+        // DND off via the waybar bell signal would end up with
+        // dnd=false but dnd_expires=Some(stale). The set_dnd helper
+        // makes (enabled, expires) a single atomic write — the
+        // signal-handler path passes None, which clears the expiry.
+
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
+
+        // Arm timed DND (mirrors the dnd_menu timed-DND button path).
+        let expiry = SystemTime::now() + std::time::Duration::from_secs(3600);
+        state.set_dnd(true, Some(expiry));
+        assert!(state.dnd);
+        assert_eq!(state.dnd_expires, Some(expiry));
+
+        // Toggle off via signal (mirrors the listeners.rs ToggleDnd path).
+        state.set_dnd(false, None);
+        assert!(!state.dnd);
+        assert_eq!(
+            state.dnd_expires, None,
+            "toggling DND off via signal must clear stale dnd_expires"
+        );
     }
 
     #[test]

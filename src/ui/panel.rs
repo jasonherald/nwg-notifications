@@ -254,14 +254,13 @@ fn build_header(
     let on_change_dnd = Rc::clone(on_state_change);
     dnd_btn.connect_clicked(move |btn| {
         let new_dnd = !state_dnd.borrow().dnd;
-        state_dnd.borrow_mut().dnd = new_dnd;
+        state_dnd.borrow_mut().set_dnd(new_dnd, None);
         let icon = if new_dnd {
             "notifications-disabled-symbolic"
         } else {
             "preferences-system-notifications-symbolic"
         };
         btn.set_icon_name(icon);
-        log::info!("DND {}", if new_dnd { "enabled" } else { "disabled" });
         on_change_dnd();
     });
     header.append(&dnd_btn);

@@ -133,9 +133,7 @@ impl DndMenu {
         let backdrops_toggle = self.backdrops.clone();
         toggle_btn.connect_clicked(move |_| {
             let new_dnd = !state_toggle.borrow().dnd;
-            state_toggle.borrow_mut().dnd = new_dnd;
-            state_toggle.borrow_mut().dnd_expires = None;
-            log::info!("DND {}", if new_dnd { "enabled" } else { "disabled" });
+            state_toggle.borrow_mut().set_dnd(new_dnd, None);
             on_change_toggle();
             win_toggle.set_visible(false);
             for b in &backdrops_toggle {
@@ -216,9 +214,8 @@ fn build_timed_dnd_button(
     let win_btn = win.clone();
     let backdrops_btn: Vec<_> = backdrops.to_vec();
     btn.connect_clicked(move |_| {
-        state_btn.borrow_mut().dnd = true;
         let expiry = std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
-        state_btn.borrow_mut().dnd_expires = Some(expiry);
+        state_btn.borrow_mut().set_dnd(true, Some(expiry));
         log::info!("DND enabled for {} minutes", minutes);
 
         // Capture the expiry we just stored. If the user clicks a
@@ -235,8 +232,7 @@ fn build_timed_dnd_button(
             move || {
                 let current = state_timer.borrow().dnd_expires;
                 if current == Some(captured_expiry) {
-                    state_timer.borrow_mut().dnd = false;
-                    state_timer.borrow_mut().dnd_expires = None;
+                    state_timer.borrow_mut().set_dnd(false, None);
                     log::info!("Timed DND expired");
                     on_change_timer();
                 }
