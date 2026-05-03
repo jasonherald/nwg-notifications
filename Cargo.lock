@@ -808,9 +808,9 @@ dependencies = [
 
 [[package]]
 name = "nwg-common"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bddf3aa18bcf84a0871017c6837def43f7f47250e0d6832b46d2bcde34f39c3"
+checksum = "406ced31ecc8842d92eb2c828dc9ad69ba143ebbdbeae702041ec0da02026977"
 dependencies = [
  "clap",
  "dirs",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "nwg-notifications"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "clap",

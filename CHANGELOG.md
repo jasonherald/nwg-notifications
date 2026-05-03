@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
-## [0.3.5] — Unreleased
+## [0.3.5] — 2026-05-03
 
 ### Fixed
 
@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     runtime instead of hardcoded to 45 (which was wrong on musl,
     where `SIGRTMIN+11 = 46`). musl users were silently sending the
     wrong signal to waybar. (#33)
+
+### Changed
+
+- Bumped `nwg-common` dependency from `0.3` to `0.4`. No public-API
+  impact for `nwg-notifications`: the only breaking change in
+  `nwg-common 0.4.0` is the new required `Compositor::focus_workspace`
+  trait method, and we only consume `Rc<dyn Compositor>` rather than
+  implementing the trait ourselves. Pulled in for the workspace-switcher
+  event surface (`WmEvent::WorkspaceChanged`) and the warn-log on
+  `init_or_null` fallback that other consumers in the nwg-* family
+  rely on.
 
 ## [0.3.4] — 2026-05-03
 
