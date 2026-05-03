@@ -76,7 +76,7 @@ fn main() {
                         "Failed to update {name}: the running daemon doesn't recognise this D-Bus method.\n\
                          This usually means the daemon is from a release older than this CLI.\n\
                          Restart it to pick up the new methods, e.g.:\n  \
-                         kill $(pidof nwg-notifications)\n\
+                         kill $(pidof nwg-notifications) 2>/dev/null || true\n\
                          and let your session manager respawn it (or just run `nwg-notifications --persist &` yourself).\n\
                          Underlying error: {e}"
                     );

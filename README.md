@@ -103,7 +103,7 @@ For the all-in-one experience, use the [`make install`](#make-install--recommend
 **After upgrading**, restart any long-running daemon process so it picks up new D-Bus surface introduced by the upgrade. The CLI on `PATH` will be the new binary immediately, but the daemon process started by your session manager (or auto-activated by D-Bus before the upgrade) keeps running the old code until it exits. Quickest restart:
 
 ```bash
-kill $(pidof nwg-notifications)
+kill $(pidof nwg-notifications) 2>/dev/null || true
 # Your session manager (or D-Bus auto-activation on the next notify-send)
 # spawns the new binary. Or run `nwg-notifications --persist &` directly.
 ```
