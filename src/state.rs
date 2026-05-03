@@ -262,27 +262,34 @@ mod tests {
 
     #[test]
     fn id_wrapping_at_max() {
-        // Verify the wrapping arithmetic used in add(): wrapping_add(1).max(1)
-        // u32::MAX wraps to 0, then max(1) clamps to 1
-        assert_eq!(u32::MAX.wrapping_add(1).max(1), 1);
-        // 0 wraps to 1, max(1) stays 1
-        assert_eq!(0u32.wrapping_add(1).max(1), 1);
-        // Normal case: 41 wraps to 42
-        assert_eq!(41u32.wrapping_add(1).max(1), 42);
-
-        // Also verify via state: use replace to set a known ID, then
-        // confirm next_id never produces 0.
+        // Drives next_notification_id through a real wrap to verify the
+        // freedesktop "id != 0" invariant holds against the actual add()
+        // path, not just the arithmetic in isolation. Pre-set next_id to
+        // u32::MAX so the next allocation hands out u32::MAX, and the
+        // one after that wraps from 0 → 1 (skipping 0 per the .max(1)).
         let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
-        // Manually push next_id close to wrapping by using replace with
-        // high IDs. The simplest approach: add notifications and confirm
-        // the returned IDs are sequential starting from 1.
-        let id1 = state.add(test_notif("app", "a"));
-        let id2 = state.add(test_notif("app", "b"));
-        assert_eq!(id1, 1);
-        assert_eq!(id2, 2);
-        // IDs are always >= 1
-        assert!(id1 >= 1);
-        assert!(id2 >= 1);
+        state.next_id = u32::MAX;
+
+        let id_max = state.add(test_notif("app", "max"));
+        let id_wrapped = state.add(test_notif("app", "wrapped"));
+        let id_after = state.add(test_notif("app", "after"));
+
+        assert_eq!(
+            id_max,
+            u32::MAX,
+            "first add should consume next_id == u32::MAX"
+        );
+        assert_eq!(
+            id_wrapped, 1,
+            "wrap from u32::MAX must skip 0 (replaces_id sentinel) and yield 1"
+        );
+        assert_eq!(
+            id_after, 2,
+            "subsequent adds continue sequentially after the wrap"
+        );
+        assert_ne!(id_max, 0);
+        assert_ne!(id_wrapped, 0);
+        assert_ne!(id_after, 0);
     }
 
     #[test]
