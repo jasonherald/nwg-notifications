@@ -154,7 +154,7 @@ fn activate_notifications(
     let app_dirs = get_app_dirs();
     let state = Rc::new(RefCell::new(NotificationState::new(
         app_dirs,
-        config.borrow().max_history,
+        Rc::clone(config),
     )));
     state.borrow_mut().dnd = config.borrow().dnd;
 
@@ -169,7 +169,7 @@ fn activate_notifications(
                 s.history.push(notif);
             }
             s.history.sort_by_key(|n| std::cmp::Reverse(n.timestamp));
-            let max = s.max_history;
+            let max = s.config.borrow().max_history;
             s.history.truncate(max);
         }
     }
