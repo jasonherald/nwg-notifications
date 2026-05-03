@@ -520,7 +520,12 @@ fn handle_capabilities(invocation: gio::DBusMethodInvocation) {
 /// with releases automatically; spec_version tracks the freedesktop
 /// notification specification level we implement.
 fn server_info_tuple() -> (&'static str, &'static str, &'static str, &'static str) {
-    ("nwg-notifications", "nwg-notifications", env!("CARGO_PKG_VERSION"), "1.2")
+    (
+        "nwg-notifications",
+        "nwg-notifications",
+        env!("CARGO_PKG_VERSION"),
+        "1.2",
+    )
 }
 
 fn handle_server_info(invocation: gio::DBusMethodInvocation) {
