@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [Unreleased]
+
+### Changed
+
+- Code-quality polish pass: tightened every `pub` item in the bin
+  crate to `pub(crate)` (#38), lifted the three nerd-font icon
+  codepoints in `waybar.rs` to named constants with a module
+  docstring documenting the font dependency (#35), extracted a
+  documented `next_notification_id()` helper that records the
+  freedesktop `id != 0` invariant (#43), and dropped the unused
+  `nix` direct dep — `clap` was already at the minimum
+  `["derive"]` feature set (#50). Confirmed that
+  `nwg-common = "0.4"` (caret = `>=0.4.0, <0.5.0`) already does
+  what a manual 0.4.x pin would; no code change needed (#51).
+
 ## [0.3.5] — 2026-05-03
 
 ### Fixed
