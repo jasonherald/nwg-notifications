@@ -292,11 +292,90 @@ fn handle_nwg_count_method(
         "SetPopupPosition" => {
             handle_set_popup_position(params, invocation, config, on_state_change)
         }
-        "SetPopupWidth" => handle_set_popup_width(params, invocation, config, on_state_change),
-        "SetPanelWidth" => handle_set_panel_width(params, invocation, config, on_state_change),
-        "SetPopupTimeout" => handle_set_popup_timeout(params, invocation, config, on_state_change),
-        "SetMaxPopups" => handle_set_max_popups(params, invocation, config, on_state_change),
-        "SetMaxHistory" => handle_set_max_history(params, invocation, config, on_state_change),
+        "SetPopupWidth" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPopupWidth",
+            |raw, cfg| {
+                let v = i32::try_from(raw)
+                    .map_err(|_| format!("popup-width {raw} exceeds i32::MAX"))?;
+                if !(crate::ui::constants::POPUP_WIDTH_MIN..=crate::ui::constants::POPUP_WIDTH_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "popup-width {v} is not in {min}..={max}",
+                        min = crate::ui::constants::POPUP_WIDTH_MIN,
+                        max = crate::ui::constants::POPUP_WIDTH_MAX,
+                    ));
+                }
+                cfg.popup_width = v;
+                Ok(())
+            },
+        ),
+        "SetPanelWidth" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPanelWidth",
+            |raw, cfg| {
+                let v = i32::try_from(raw)
+                    .map_err(|_| format!("panel-width {raw} exceeds i32::MAX"))?;
+                if !(crate::ui::constants::PANEL_WIDTH_MIN..=crate::ui::constants::PANEL_WIDTH_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "panel-width {v} is not in {min}..={max}",
+                        min = crate::ui::constants::PANEL_WIDTH_MIN,
+                        max = crate::ui::constants::PANEL_WIDTH_MAX,
+                    ));
+                }
+                cfg.panel_width = v;
+                Ok(())
+            },
+        ),
+        "SetPopupTimeout" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetPopupTimeout",
+            |raw, cfg| {
+                // 0 is a valid value (means "never auto-dismiss").
+                cfg.popup_timeout = u64::from(raw);
+                Ok(())
+            },
+        ),
+        "SetMaxPopups" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetMaxPopups",
+            |raw, cfg| {
+                if raw == 0 {
+                    return Err("max-popups must be >= 1".to_string());
+                }
+                cfg.max_popups = raw as usize;
+                Ok(())
+            },
+        ),
+        "SetMaxHistory" => handle_set_u32(
+            params,
+            invocation,
+            config,
+            on_state_change,
+            "SetMaxHistory",
+            |raw, cfg| {
+                if raw == 0 {
+                    return Err("max-history must be >= 1".to_string());
+                }
+                cfg.max_history = raw as usize;
+                Ok(())
+            },
+        ),
         _ => {
             log::warn!("Unknown nwg-count D-Bus method: {}", method);
             invocation.return_dbus_error(
@@ -309,6 +388,48 @@ fn handle_nwg_count_method(
 
 fn return_invalid_args(invocation: gio::DBusMethodInvocation, msg: &str) {
     invocation.return_dbus_error("org.freedesktop.DBus.Error.InvalidArgs", msg);
+}
+
+/// Generic handler for any `u32`-valued live-config setter on
+/// `org.nwg.Notifications`. Decodes the first param as `u32`, hands
+/// it to the `apply` closure (which validates and writes into
+/// `NotificationConfig`), and bridges the result back to the D-Bus
+/// invocation: `Ok(())` returns success and fires `on_state_change`,
+/// `Err(msg)` returns `org.freedesktop.DBus.Error.InvalidArgs` with
+/// the supplied message.
+///
+/// `method_name` is used only for the wrong-type error message
+/// (e.g. `"SetMaxPopups expects a uint32 argument"`); pass the bare
+/// D-Bus method name without quoting.
+fn handle_set_u32(
+    params: &glib::Variant,
+    invocation: gio::DBusMethodInvocation,
+    config: &Rc<RefCell<NotificationConfig>>,
+    on_state_change: &Rc<dyn Fn()>,
+    method_name: &str,
+    apply: impl FnOnce(u32, &mut NotificationConfig) -> Result<(), String>,
+) {
+    let raw: u32 = match params.child_value(0).get() {
+        Some(v) => v,
+        None => {
+            return_invalid_args(
+                invocation,
+                &format!("{method_name} expects a uint32 argument"),
+            );
+            return;
+        }
+    };
+    let result = {
+        let mut cfg = config.borrow_mut();
+        apply(raw, &mut cfg)
+    };
+    match result {
+        Ok(()) => {
+            invocation.return_value(None);
+            on_state_change();
+        }
+        Err(msg) => return_invalid_args(invocation, &msg),
+    }
 }
 
 fn handle_set_popup_position(
@@ -342,145 +463,6 @@ fn handle_set_popup_position(
     }
 }
 
-fn handle_set_popup_width(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPopupWidth expects a uint32 argument");
-            return;
-        }
-    };
-    let raw_i32 = match i32::try_from(raw) {
-        Ok(v) => v,
-        Err(_) => {
-            return_invalid_args(invocation, &format!("popup-width {raw} exceeds i32::MAX"));
-            return;
-        }
-    };
-    if !(crate::ui::constants::POPUP_WIDTH_MIN..=crate::ui::constants::POPUP_WIDTH_MAX)
-        .contains(&raw_i32)
-    {
-        return_invalid_args(
-            invocation,
-            &format!(
-                "popup-width {raw_i32} is not in {min}..={max}",
-                min = crate::ui::constants::POPUP_WIDTH_MIN,
-                max = crate::ui::constants::POPUP_WIDTH_MAX,
-            ),
-        );
-        return;
-    }
-    config.borrow_mut().popup_width = raw_i32;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_panel_width(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPanelWidth expects a uint32 argument");
-            return;
-        }
-    };
-    let raw_i32 = match i32::try_from(raw) {
-        Ok(v) => v,
-        Err(_) => {
-            return_invalid_args(invocation, &format!("panel-width {raw} exceeds i32::MAX"));
-            return;
-        }
-    };
-    if !(crate::ui::constants::PANEL_WIDTH_MIN..=crate::ui::constants::PANEL_WIDTH_MAX)
-        .contains(&raw_i32)
-    {
-        return_invalid_args(
-            invocation,
-            &format!(
-                "panel-width {raw_i32} is not in {min}..={max}",
-                min = crate::ui::constants::PANEL_WIDTH_MIN,
-                max = crate::ui::constants::PANEL_WIDTH_MAX,
-            ),
-        );
-        return;
-    }
-    config.borrow_mut().panel_width = raw_i32;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_popup_timeout(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetPopupTimeout expects a uint32 argument");
-            return;
-        }
-    };
-    // 0 is a valid value (means "never auto-dismiss").
-    config.borrow_mut().popup_timeout = u64::from(raw);
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_max_popups(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetMaxPopups expects a uint32 argument");
-            return;
-        }
-    };
-    if raw == 0 {
-        return_invalid_args(invocation, "max-popups must be >= 1");
-        return;
-    }
-    config.borrow_mut().max_popups = raw as usize;
-    invocation.return_value(None);
-    on_state_change();
-}
-
-fn handle_set_max_history(
-    params: &glib::Variant,
-    invocation: gio::DBusMethodInvocation,
-    config: &Rc<RefCell<NotificationConfig>>,
-    on_state_change: &Rc<dyn Fn()>,
-) {
-    let raw: u32 = match params.child_value(0).get() {
-        Some(v) => v,
-        None => {
-            return_invalid_args(invocation, "SetMaxHistory expects a uint32 argument");
-            return;
-        }
-    };
-    if raw == 0 {
-        return_invalid_args(invocation, "max-history must be >= 1");
-        return;
-    }
-    config.borrow_mut().max_history = raw as usize;
-    invocation.return_value(None);
-    on_state_change();
-}
-
 fn handle_notify(
     params: &glib::Variant,
     invocation: gio::DBusMethodInvocation,
@@ -504,7 +486,7 @@ fn handle_notify(
     // Parse hints dict for urgency and desktop-entry
     let hints_variant = params.child_value(6);
     let urgency = extract_urgency(&hints_variant);
-    let desktop_entry = extract_string_hint(&hints_variant, "desktop-entry");
+    let desktop_entry = extract_hint::<String>(&hints_variant, "desktop-entry");
 
     let notif = Notification {
         id: 0, // assigned by state.add/replace
@@ -807,31 +789,33 @@ pub(crate) fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
     }
 }
 
-fn extract_urgency(hints: &glib::Variant) -> Urgency {
-    // Look for "urgency" key in the a{sv} dict
-    for i in 0..hints.n_children() {
-        let entry = hints.child_value(i);
-        let key: Option<String> = entry.child_value(0).get();
-        if key.as_deref() == Some("urgency") {
-            let val = entry.child_value(1).child_value(0);
-            if let Some(u) = val.get::<u8>() {
-                return Urgency::from(u);
-            }
-        }
-    }
-    Urgency::Normal
-}
-
-fn extract_string_hint(hints: &glib::Variant, key_name: &str) -> Option<String> {
+/// Looks up `key_name` inside an `a{sv}` hints dict and returns the
+/// inner value if present and of the expected type. Generic over the
+/// expected value type — both `extract_urgency` and the inline
+/// `desktop-entry` extractor in `handle_notify` use it.
+///
+/// The dict structure is the freedesktop notification spec's
+/// `hints` parameter to `Notify`: an array of dict-entries where
+/// each entry is `(s, v)` (string key, variant value). The variant
+/// value wraps the actual typed payload one level deeper.
+fn extract_hint<T>(hints: &glib::Variant, key_name: &str) -> Option<T>
+where
+    T: glib::variant::FromVariant,
+{
     for i in 0..hints.n_children() {
         let entry = hints.child_value(i);
         let key: Option<String> = entry.child_value(0).get();
         if key.as_deref() == Some(key_name) {
-            let val = entry.child_value(1).child_value(0);
-            return val.get::<String>();
+            return entry.child_value(1).child_value(0).get::<T>();
         }
     }
     None
+}
+
+fn extract_urgency(hints: &glib::Variant) -> Urgency {
+    extract_hint::<u8>(hints, "urgency")
+        .map(Urgency::from)
+        .unwrap_or(Urgency::Normal)
 }
 
 #[cfg(test)]
@@ -880,5 +864,52 @@ mod tests {
         assert_eq!(vendor, "nwg-notifications");
         assert_eq!(version, env!("CARGO_PKG_VERSION"));
         assert_eq!(spec, "1.2");
+    }
+
+    /// Helper for tests: builds a synthetic `a{sv}` hints variant
+    /// with the supplied entries, mirroring what the freedesktop
+    /// `Notify` method receives in real life.
+    fn build_hints_variant(entries: &[(&str, glib::Variant)]) -> glib::Variant {
+        let dict = glib::VariantDict::new(None);
+        for (key, value) in entries {
+            dict.insert_value(key, value);
+        }
+        dict.end()
+    }
+
+    #[test]
+    fn extract_hint_returns_none_for_missing_key() {
+        let hints = build_hints_variant(&[]);
+        assert_eq!(extract_hint::<u8>(&hints, "urgency"), None);
+        assert_eq!(extract_hint::<String>(&hints, "desktop-entry"), None);
+    }
+
+    #[test]
+    fn extract_hint_returns_none_for_wrong_value_type() {
+        // "urgency" present but its value is a string instead of u8.
+        let hints = build_hints_variant(&[("urgency", glib::Variant::from("high"))]);
+        assert_eq!(extract_hint::<u8>(&hints, "urgency"), None);
+    }
+
+    #[test]
+    fn extract_urgency_recognises_low_normal_critical() {
+        let low = build_hints_variant(&[("urgency", glib::Variant::from(0u8))]);
+        let normal = build_hints_variant(&[("urgency", glib::Variant::from(1u8))]);
+        let critical = build_hints_variant(&[("urgency", glib::Variant::from(2u8))]);
+        assert_eq!(extract_urgency(&low), Urgency::Low);
+        assert_eq!(extract_urgency(&normal), Urgency::Normal);
+        assert_eq!(extract_urgency(&critical), Urgency::Critical);
+        // Missing urgency falls back to Normal per spec.
+        let empty = build_hints_variant(&[]);
+        assert_eq!(extract_urgency(&empty), Urgency::Normal);
+    }
+
+    #[test]
+    fn extract_hint_string_returns_well_formed_desktop_entry() {
+        let hints = build_hints_variant(&[("desktop-entry", glib::Variant::from("firefox"))]);
+        assert_eq!(
+            extract_hint::<String>(&hints, "desktop-entry"),
+            Some("firefox".to_string())
+        );
     }
 }
