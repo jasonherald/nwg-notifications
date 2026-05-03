@@ -71,10 +71,21 @@ fn main() {
                 _ => unreachable!("user_set_live_args returns only known names"),
             };
             if let Err(e) = push_result {
-                eprintln!("Failed to update {}: {}", name, e);
+                if dbus::is_unknown_method_error(&e) {
+                    eprintln!(
+                        "Failed to update {name}: the running daemon doesn't recognise this D-Bus method.\n\
+                         This usually means the daemon is from a release older than this CLI.\n\
+                         Restart it to pick up the new methods, e.g.:\n  \
+                         kill $(pidof nwg-notifications)\n\
+                         and let your session manager respawn it (or just run `nwg-notifications --persist &` yourself).\n\
+                         Underlying error: {e}"
+                    );
+                } else {
+                    eprintln!("Failed to update {name}: {e}");
+                }
                 had_error = true;
             } else {
-                println!("Updated {}", name);
+                println!("Updated {name}");
             }
         }
         std::process::exit(if had_error { 1 } else { 0 });

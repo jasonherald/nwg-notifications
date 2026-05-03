@@ -623,6 +623,15 @@ pub fn push_max_history(value: u32) -> Result<(), glib::Error> {
     call_setter_sync("SetMaxHistory", glib::Variant::from((value,)))
 }
 
+/// Returns true if the given `glib::Error` is the standard D-Bus
+/// `org.freedesktop.DBus.Error.UnknownMethod` error class. Used by the
+/// `--update` CLI to give an actionable message when the running daemon
+/// is from a release older than the CLI and doesn't recognise a method
+/// the CLI is trying to call (#25).
+pub fn is_unknown_method_error(err: &glib::Error) -> bool {
+    err.matches(gio::DBusError::UnknownMethod)
+}
+
 /// Emits CountChanged on the org.nwg.Notifications interface.
 ///
 /// Best-effort: a failure here doesn't affect anything else; we log and move on.
@@ -691,5 +700,17 @@ mod tests {
     fn unread_count_to_u32_clamps_on_overflow() {
         assert_eq!(unread_count_to_u32(u32::MAX as usize + 1), u32::MAX);
         assert_eq!(unread_count_to_u32(usize::MAX), u32::MAX);
+    }
+
+    #[test]
+    fn is_unknown_method_error_recognises_dbus_unknown_method() {
+        let err = glib::Error::new(gio::DBusError::UnknownMethod, "method missing");
+        assert!(is_unknown_method_error(&err));
+    }
+
+    #[test]
+    fn is_unknown_method_error_rejects_other_dbus_errors() {
+        let err = glib::Error::new(gio::DBusError::NoMemory, "out of memory");
+        assert!(!is_unknown_method_error(&err));
     }
 }
