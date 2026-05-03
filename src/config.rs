@@ -1,3 +1,8 @@
+//! clap CLI definition (`NotificationConfig`, `PopupPosition` enum)
+//! and the `value_source`-based filter that lets `--update` push
+//! only the flags the user actually passed rather than reset the
+//! rest to their defaults.
+
 use crate::ui::constants::{
     PANEL_WIDTH_DEFAULT, PANEL_WIDTH_MAX, PANEL_WIDTH_MIN, POPUP_WIDTH_DEFAULT, POPUP_WIDTH_MAX,
     POPUP_WIDTH_MIN,

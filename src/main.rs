@@ -1,3 +1,8 @@
+//! Coordinator: wires daemon state, popup manager, panel, D-Bus
+//! server, and signal listener. Owns the GTK `Application` and the
+//! short-circuit CLI modes (`--count`, `--update`) that exit before
+//! claiming the singleton lock.
+
 mod config;
 mod dbus;
 mod listeners;
@@ -130,6 +135,14 @@ fn main() {
         .build();
 
     let config = Rc::new(RefCell::new(config));
+    // GApplication exits as soon as the activate handler returns idle. As a
+    // notification daemon we need to stay resident — the popup manager,
+    // panel, D-Bus server, and signal listener all rely on the glib main
+    // loop continuing to run. `app.hold()` returns a guard that increments
+    // GApplication's hold count; storing it in this RefCell keeps it
+    // alive for the daemon's lifetime. Drop the guard to let the
+    // application exit cleanly. See the GTK `GApplication` docs for
+    // hold/release semantics.
     let hold_guard: Rc<RefCell<Option<gio::ApplicationHoldGuard>>> = Rc::new(RefCell::new(None));
     let hold_ref = Rc::clone(&hold_guard);
 

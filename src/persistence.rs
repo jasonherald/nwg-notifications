@@ -1,3 +1,8 @@
+//! Notification history serialization. Round-trips the
+//! `Vec<Notification>` to a JSON file in the cache directory so
+//! `--persist` mode survives daemon restarts. Tolerates missing
+//! and corrupt files by returning an empty history.
+
 use crate::notification::Notification;
 use std::path::{Path, PathBuf};
 

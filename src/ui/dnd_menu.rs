@@ -1,3 +1,9 @@
+//! Do-Not-Disturb duration picker. A small layer-shell popup
+//! shown on right-click of the waybar bell — lets the user pick
+//! "1 hour", "until tomorrow", "until I turn it off", etc., and
+//! arms a glib timer that flips DND off when the chosen expiry
+//! arrives.
+
 use crate::state::NotificationState;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;

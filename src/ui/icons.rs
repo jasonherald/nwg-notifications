@@ -1,3 +1,10 @@
+//! Notification-specific icon helpers. `resolve_popup_icon` and
+//! `resolve_theme_icon` wrap `nwg_common::desktop::icons` with the
+//! pixbuf / theme-variant logic that the popup and panel rendering
+//! paths need. Kept local to this crate rather than promoted to
+//! `nwg-common` because the helpers are notification-specific
+//! (icon-name + app-name fallback chain, themed-image rendering).
+
 use nwg_common::desktop::icons;
 use std::path::PathBuf;
 

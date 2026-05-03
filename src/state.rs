@@ -1,3 +1,9 @@
+//! `NotificationState`: the daemon's mutable state — notification
+//! history, app-grouped views, DND mode (with optional expiry),
+//! the active-popups set, and the `dbus_connection` slot used by
+//! callbacks to emit signals back through the same connection that
+//! handled the originating method call.
+
 use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency};
 use gtk4::gio;

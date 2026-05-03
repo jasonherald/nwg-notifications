@@ -1,3 +1,8 @@
+//! CSS loader. Reads the embedded default stylesheet at startup
+//! and installs it on the default `gdk::Display` so every GTK
+//! widget in the daemon picks it up. Hot reload comes from
+//! `nwg_common::config::css` watching the user override path.
+
 use nwg_common::config::css;
 
 /// Embedded notification CSS, loaded at compile time.
