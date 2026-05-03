@@ -1,3 +1,16 @@
+//! Waybar notification-module integration.
+//!
+//! Writes a small JSON status file at `$XDG_RUNTIME_DIR/mac-notifications-status.json`
+//! and signals waybar (`SIGRTMIN+11`) to refresh after every state change.
+//!
+//! The icon glyphs in the status text come from the [Material Design Icons]
+//! range of [Nerd Fonts] (Private Use Area `f0xxx`). Waybar must be running
+//! a font that includes these glyphs (e.g. `JetBrainsMono Nerd Font`,
+//! `Symbols Nerd Font`) or the icons render as `tofu` boxes.
+//!
+//! [Material Design Icons]: https://pictogrammers.com/library/mdi/
+//! [Nerd Fonts]: https://www.nerdfonts.com/
+
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -5,6 +18,20 @@ use std::path::PathBuf;
 /// Kept as a single named constant so the implementation and its test
 /// can't drift apart.
 const WAYBAR_REFRESH_SIGNAL_OFFSET: i32 = 11;
+
+/// Material Design Icons (nerd-font) glyph used in the waybar status text
+/// when Do-Not-Disturb is active. `\u{f06d9}` → 󰛙 `bell-off`.
+const ICON_BELL_OFF: &str = "\u{f06d9}";
+
+/// Material Design Icons (nerd-font) glyph used in the waybar status text
+/// when there are unread notifications. `\u{f009a}` → 󰂚 `bell-badge`.
+/// Rendered with the unread count as a trailing decimal.
+const ICON_BELL_BADGE: &str = "\u{f009a}";
+
+/// Material Design Icons (nerd-font) glyph used in the waybar status text
+/// when the inbox is empty (no unread, no DND). `\u{f009c}` → 󰂜
+/// `bell-outline`.
+const ICON_BELL_OUTLINE: &str = "\u{f009c}";
 
 /// Returns the runtime signal number for the waybar refresh signal
 /// (SIGRTMIN+11). Computed from `libc::SIGRTMIN()` rather than hardcoded
@@ -39,7 +66,7 @@ fn status_path() -> PathBuf {
 pub fn update_status(unread: usize, dnd: bool) {
     let status = if dnd {
         WaybarStatus {
-            text: "\u{f06d9}".into(), // 󰛙 bell-off
+            text: ICON_BELL_OFF.into(),
             tooltip: "Do Not Disturb".into(),
             alt: "dnd".into(),
             class: "dnd".into(),
@@ -47,7 +74,7 @@ pub fn update_status(unread: usize, dnd: bool) {
         }
     } else if unread > 0 {
         WaybarStatus {
-            text: format!("\u{f009a} {unread}"), // 󰂚 bell-badge + count
+            text: format!("{ICON_BELL_BADGE} {unread}"),
             tooltip: format!(
                 "{unread} unread notification{}",
                 if unread == 1 { "" } else { "s" }
@@ -58,7 +85,7 @@ pub fn update_status(unread: usize, dnd: bool) {
         }
     } else {
         WaybarStatus {
-            text: "\u{f009c}".into(), // 󰂜 bell-outline
+            text: ICON_BELL_OUTLINE.into(),
             tooltip: "No notifications".into(),
             alt: "empty".into(),
             class: "empty".into(),
