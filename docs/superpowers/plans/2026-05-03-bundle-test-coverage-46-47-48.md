@@ -67,7 +67,7 @@ Expected: every step exits 0; pre-existing `cargo deny` "unmatched skip" warning
 grep -n "fn relative_time\|fn build_row" src/ui/notification_row.rs
 ```
 
-Expected: `relative_time` defined around line 105; `build_row` (the call site) defined around line 8.
+Expected: two matches — `relative_time` defined near the bottom of the file, and `build_row` (the call site that invokes `relative_time(notif.timestamp)` for the time label) defined as the file's primary `pub(crate)` entry point at the top.
 
 - [ ] **Step 2: Extract the pure helper and rewrite the wrapper**
 
