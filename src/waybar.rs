@@ -1,8 +1,17 @@
 use serde::Serialize;
 use std::path::PathBuf;
 
-/// Waybar refresh signal: SIGRTMIN+11 = 34+11 = 45.
-const WAYBAR_REFRESH_SIGNAL: i32 = 45;
+/// Returns the runtime signal number for the waybar refresh signal
+/// (SIGRTMIN+11). Computed from `libc::SIGRTMIN()` rather than hardcoded
+/// because the value differs across libc implementations: glibc reserves
+/// the first two RT signals (so `SIGRTMIN` = 34, hence SIGRTMIN+11 = 45),
+/// while musl reserves three (so `SIGRTMIN` = 35, hence SIGRTMIN+11 = 46).
+/// The nwg-common crate uses the same `libc::SIGRTMIN()` lookup
+/// internally; we duplicate the call here rather than depend on a
+/// (currently private) helper there. See #33.
+fn waybar_refresh_signal() -> i32 {
+    libc::SIGRTMIN() + 11
+}
 
 #[derive(Serialize)]
 struct WaybarStatus {
@@ -67,8 +76,9 @@ pub fn update_status(unread: usize, dnd: bool) {
 
 /// Sends SIGRTMIN+11 to waybar to refresh the notification module.
 fn signal_waybar() {
+    let signal_num = waybar_refresh_signal();
     match std::process::Command::new("pkill")
-        .arg(format!("-{WAYBAR_REFRESH_SIGNAL}"))
+        .arg(format!("-{signal_num}"))
         .arg("waybar")
         .status()
     {
@@ -96,5 +106,17 @@ mod tests {
             json.contains("\"count\":7"),
             "expected count field in JSON, got: {json}"
         );
+    }
+
+    #[test]
+    fn waybar_refresh_signal_is_sigrtmin_plus_11() {
+        let s = waybar_refresh_signal();
+        let base = libc::SIGRTMIN();
+        assert_eq!(s, base + 11, "expected SIGRTMIN({base}) + 11, got {s}");
+        // Cross-check that the value is in the RT-signal range. SIGRTMIN
+        // is at minimum 33 on Linux; SIGRTMAX is at most 64. SIGRTMIN+11
+        // must fit comfortably below SIGRTMAX even on the more
+        // restrictive musl layout.
+        assert!(s < libc::SIGRTMAX(), "signal {s} exceeds SIGRTMAX");
     }
 }
