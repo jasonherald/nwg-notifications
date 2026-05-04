@@ -146,7 +146,13 @@ impl NotificationState {
     /// buttons that arm a `glib::timeout_add_local_once`.
     pub(crate) fn set_dnd(&mut self, enabled: bool, expires: Option<std::time::SystemTime>) {
         self.dnd = enabled;
-        self.dnd_expires = expires;
+        // Normalize: an "off" DND with a non-None expiry is a
+        // degenerate state that the rest of the code doesn't handle
+        // (the timer-fire token check would still fire even though
+        // DND is already off). Force expiry to None when disabling
+        // so a future caller that gets the API wrong can't reintroduce
+        // the (dnd, dnd_expires) drift this helper exists to prevent.
+        self.dnd_expires = if enabled { expires } else { None };
         log::info!("DND {}", if enabled { "enabled" } else { "disabled" });
     }
 
@@ -315,6 +321,24 @@ mod tests {
         assert_eq!(
             state.dnd_expires, None,
             "toggling DND off via signal must clear stale dnd_expires"
+        );
+    }
+
+    #[test]
+    fn set_dnd_off_normalizes_away_caller_supplied_expiry() {
+        // Defensive normalization: even if a future caller passes
+        // set_dnd(false, Some(...)) by mistake, the helper must
+        // discard the expiry — DND being off and dnd_expires being
+        // populated is a degenerate state that the timer-fire token
+        // check + dnd_menu's "show remaining time" UI weren't built
+        // to handle.
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
+        let bogus = SystemTime::now() + std::time::Duration::from_secs(3600);
+        state.set_dnd(false, Some(bogus));
+        assert!(!state.dnd, "set_dnd(false, _) must leave dnd disabled");
+        assert_eq!(
+            state.dnd_expires, None,
+            "set_dnd(false, _) must clear any caller-supplied expiry"
         );
     }
 
