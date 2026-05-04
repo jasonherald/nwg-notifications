@@ -54,10 +54,10 @@ pub(crate) fn history_path() -> PathBuf {
 const LEGACY_HISTORY_FILENAME: &str = "mac-notifications-history.json";
 
 /// One-time migration: if the new history path doesn't exist and
-/// the legacy v0.3.x path *does* exist in the same directory, copy
-/// the legacy file's contents to the new path and unlink the old
-/// file. Returns `Some(new_path)` if a migration happened, `None`
-/// otherwise.
+/// a legacy v0.3.x path *does* exist at one of the candidate
+/// locations, copy the legacy file's contents to the new path and
+/// unlink the legacy file. Returns `Some(new_path)` if a migration
+/// happened, `None` otherwise.
 ///
 /// Idempotent: a second call after a successful migration finds the
 /// new file already present and returns `None`. Logs at info-level
@@ -75,37 +75,79 @@ pub(crate) fn migrate_history_if_needed() -> Option<PathBuf> {
     if new_path.exists() {
         return None;
     }
-    // Construct the legacy path inside the same parent directory the
-    // new path lives in. fallback_user_dir resolution rules apply
-    // identically so the legacy file is in the same XDG-resolved
-    // location the new file would be.
-    let parent = new_path.parent()?;
-    let legacy_path = parent.join(LEGACY_HISTORY_FILENAME);
-    if !legacy_path.exists() {
-        return None;
+    let candidates = legacy_history_candidates(&new_path);
+    migrate_history_from_candidates(&new_path, &candidates)
+}
+
+/// Returns every candidate path the legacy v0.3.x history file
+/// might have lived at:
+///
+/// 1. Same parent directory as the new path (XDG-resolved). Covers
+///    the common case where the daemon resolved its cache dir via
+///    `$XDG_CACHE_HOME` or `$HOME/.cache` — only the filename
+///    changed in this release, the directory stayed put.
+/// 2. The legacy `/tmp/mac-notifications-<uid>/` per-UID sandbox,
+///    used by the degraded "no XDG dirs at all" fallback in
+///    v0.3.x. This release renamed that sandbox dir from
+///    `mac-notifications-<uid>` to `nwg-notifications-<uid>`, so
+///    a v0.3.x user in that branch had history at
+///    `/tmp/mac-notifications-<uid>/mac-notifications-history.json`
+///    which the (1) candidate would miss because the *directory*
+///    name changed too. Probing this second candidate keeps such
+///    users from silently losing their history.
+fn legacy_history_candidates(new_path: &std::path::Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    if let Some(parent) = new_path.parent() {
+        out.push(parent.join(LEGACY_HISTORY_FILENAME));
     }
-    if let Err(e) = std::fs::copy(&legacy_path, &new_path) {
-        log::warn!(
-            "Failed to migrate legacy history file {} -> {}: {}",
+    // SAFETY: getuid() is always-succeed POSIX FFI.
+    let uid = unsafe { libc::getuid() };
+    let legacy_tmp_path = PathBuf::from("/tmp")
+        .join(format!("mac-notifications-{uid}"))
+        .join(LEGACY_HISTORY_FILENAME);
+    if !out.contains(&legacy_tmp_path) {
+        out.push(legacy_tmp_path);
+    }
+    out
+}
+
+/// Inner helper: takes the new path and a slice of candidate legacy
+/// paths in priority order, copies the first existing one to the
+/// new path, and unlinks it. Parameterized so `legacy_history_candidates`
+/// composition can be unit-tested independently of the migration
+/// I/O loop.
+fn migrate_history_from_candidates(
+    new_path: &std::path::Path,
+    candidates: &[PathBuf],
+) -> Option<PathBuf> {
+    for legacy_path in candidates {
+        if !legacy_path.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::copy(legacy_path, new_path) {
+            log::warn!(
+                "Failed to migrate legacy history file {} -> {}: {}",
+                legacy_path.display(),
+                new_path.display(),
+                e
+            );
+            continue;
+        }
+        log::info!(
+            "Migrated legacy history file {} -> {}",
             legacy_path.display(),
-            new_path.display(),
-            e
+            new_path.display()
         );
-        return None;
+        if let Err(e) = std::fs::remove_file(legacy_path) {
+            log::warn!(
+                "Migrated history file but failed to unlink legacy {}: {}",
+                legacy_path.display(),
+                e
+            );
+        }
+        return Some(new_path.to_path_buf());
     }
-    log::info!(
-        "Migrated legacy history file {} -> {}",
-        legacy_path.display(),
-        new_path.display()
-    );
-    if let Err(e) = std::fs::remove_file(&legacy_path) {
-        log::warn!(
-            "Migrated history file but failed to unlink legacy {}: {}",
-            legacy_path.display(),
-            e
-        );
-    }
-    Some(new_path)
+    None
 }
 
 /// Returns the path to the waybar status JSON file.
@@ -484,5 +526,47 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&tmpdir);
+    }
+
+    #[test]
+    fn legacy_history_candidates_includes_xdg_parent_and_tmp_per_uid_fallback() {
+        // Bug fix from CodeRabbit on PR #60: the original
+        // migration only checked the new path's parent dir, which
+        // misses v0.3.x users who landed in the degraded
+        // /tmp/mac-notifications-<uid>/ branch (where the *parent
+        // dir* itself was renamed from mac-* to nwg-*, not just the
+        // filename). The candidate-list shape now includes both.
+
+        // SAFETY: getuid() is always-succeed POSIX FFI.
+        let uid = unsafe { libc::getuid() };
+        let xdg_parent = PathBuf::from("/some/xdg/dir");
+        let new_path = xdg_parent.join("nwg-notifications-history.json");
+        let candidates = legacy_history_candidates(&new_path);
+
+        // Candidate 1: same parent as the new path (XDG-resolved
+        // common case — only the filename changed).
+        assert!(
+            candidates.contains(&xdg_parent.join("mac-notifications-history.json")),
+            "candidates must include the same-parent legacy path; got {candidates:?}"
+        );
+
+        // Candidate 2: the legacy /tmp/mac-notifications-<uid>/
+        // parent (degraded no-XDG branch where the parent dir
+        // itself was renamed).
+        let expected_tmp_legacy = PathBuf::from("/tmp")
+            .join(format!("mac-notifications-{uid}"))
+            .join("mac-notifications-history.json");
+        assert!(
+            candidates.contains(&expected_tmp_legacy),
+            "candidates must include the legacy /tmp/mac-notifications-<uid>/ \
+             fallback path; got {candidates:?}"
+        );
+
+        // Order matters for migration priority — XDG parent first.
+        assert_eq!(
+            candidates.first(),
+            Some(&xdg_parent.join("mac-notifications-history.json")),
+            "XDG-parent candidate must be tried first (most common); got {candidates:?}"
+        );
     }
 }
