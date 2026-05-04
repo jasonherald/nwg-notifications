@@ -248,7 +248,7 @@ Existing v0.3.x users have their history JSON at the old path. After Task 1 the 
 
 - [ ] **Step 1: Add the migration helper to `src/paths.rs`**
 
-In `src/paths.rs`, find `history_path()` (the function added/touched in Task 1). Below it, before `status_path()`, add:
+In `src/paths.rs`, find `history_path()` (the function added/touched in Task 1). Below it, before `status_path()`, add the constant + the three helpers (the public composing API + two extracted inner helpers — the parameterized split exists so the candidate-list shape can be unit-tested without writing to a real `/tmp/mac-notifications-<actual-uid>/` path during test runs):
 
 ```rust
 /// Filename of the legacy v0.3.x history JSON. Used only by
@@ -257,10 +257,10 @@ In `src/paths.rs`, find `history_path()` (the function added/touched in Task 1).
 const LEGACY_HISTORY_FILENAME: &str = "mac-notifications-history.json";
 
 /// One-time migration: if the new history path doesn't exist and
-/// the legacy v0.3.x path *does* exist in the same directory, copy
-/// the legacy file's contents to the new path and unlink the old
-/// file. Returns `Some(new_path)` if a migration happened, `None`
-/// otherwise.
+/// a legacy v0.3.x path *does* exist at one of the candidate
+/// locations, copy the legacy file's contents to the new path and
+/// unlink the legacy file. Returns `Some(new_path)` if a migration
+/// happened, `None` otherwise.
 ///
 /// Idempotent: a second call after a successful migration finds the
 /// new file already present and returns `None`. Logs at info-level
@@ -278,37 +278,79 @@ pub(crate) fn migrate_history_if_needed() -> Option<PathBuf> {
     if new_path.exists() {
         return None;
     }
-    // Construct the legacy path inside the same parent directory the
-    // new path lives in. fallback_user_dir resolution rules apply
-    // identically so the legacy file is in the same XDG-resolved
-    // location the new file would be.
-    let parent = new_path.parent()?;
-    let legacy_path = parent.join(LEGACY_HISTORY_FILENAME);
-    if !legacy_path.exists() {
-        return None;
+    let candidates = legacy_history_candidates(&new_path);
+    migrate_history_from_candidates(&new_path, &candidates)
+}
+
+/// Returns every candidate path the legacy v0.3.x history file
+/// might have lived at:
+///
+/// 1. Same parent directory as the new path (XDG-resolved). Covers
+///    the common case where the daemon resolved its cache dir via
+///    `$XDG_CACHE_HOME` or `$HOME/.cache` — only the filename
+///    changed in this release, the directory stayed put.
+/// 2. The legacy `/tmp/mac-notifications-<uid>/` per-UID sandbox,
+///    used by the degraded "no XDG dirs at all" fallback in
+///    v0.3.x. This release renamed that sandbox dir from
+///    `mac-notifications-<uid>` to `nwg-notifications-<uid>`, so
+///    a v0.3.x user in that branch had history at
+///    `/tmp/mac-notifications-<uid>/mac-notifications-history.json`
+///    which the (1) candidate would miss because the *directory*
+///    name changed too. Probing this second candidate keeps such
+///    users from silently losing their history.
+fn legacy_history_candidates(new_path: &std::path::Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    if let Some(parent) = new_path.parent() {
+        out.push(parent.join(LEGACY_HISTORY_FILENAME));
     }
-    if let Err(e) = std::fs::copy(&legacy_path, &new_path) {
-        log::warn!(
-            "Failed to migrate legacy history file {} -> {}: {}",
+    // SAFETY: getuid() is always-succeed POSIX FFI.
+    let uid = unsafe { libc::getuid() };
+    let legacy_tmp_path = PathBuf::from("/tmp")
+        .join(format!("mac-notifications-{uid}"))
+        .join(LEGACY_HISTORY_FILENAME);
+    if !out.contains(&legacy_tmp_path) {
+        out.push(legacy_tmp_path);
+    }
+    out
+}
+
+/// Inner helper: takes the new path and a slice of candidate legacy
+/// paths in priority order, copies the first existing one to the
+/// new path, and unlinks it. Parameterized so `legacy_history_candidates`
+/// composition can be unit-tested independently of the migration
+/// I/O loop.
+fn migrate_history_from_candidates(
+    new_path: &std::path::Path,
+    candidates: &[PathBuf],
+) -> Option<PathBuf> {
+    for legacy_path in candidates {
+        if !legacy_path.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::copy(legacy_path, new_path) {
+            log::warn!(
+                "Failed to migrate legacy history file {} -> {}: {}",
+                legacy_path.display(),
+                new_path.display(),
+                e
+            );
+            continue;
+        }
+        log::info!(
+            "Migrated legacy history file {} -> {}",
             legacy_path.display(),
-            new_path.display(),
-            e
+            new_path.display()
         );
-        return None;
+        if let Err(e) = std::fs::remove_file(legacy_path) {
+            log::warn!(
+                "Migrated history file but failed to unlink legacy {}: {}",
+                legacy_path.display(),
+                e
+            );
+        }
+        return Some(new_path.to_path_buf());
     }
-    log::info!(
-        "Migrated legacy history file {} -> {}",
-        legacy_path.display(),
-        new_path.display()
-    );
-    if let Err(e) = std::fs::remove_file(&legacy_path) {
-        log::warn!(
-            "Migrated history file but failed to unlink legacy {}: {}",
-            legacy_path.display(),
-            e
-        );
-    }
-    Some(new_path)
+    None
 }
 ```
 
