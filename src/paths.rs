@@ -33,10 +33,17 @@ pub(crate) fn history_path() -> PathBuf {
 /// Returns the path to the waybar status JSON file.
 /// Prefers `$XDG_RUNTIME_DIR`; falls back to `cache_dir()` and
 /// finally to a per-UID sandbox under `/tmp` if neither resolves.
+///
+/// An empty `XDG_RUNTIME_DIR` is treated as unset — `PathBuf::from("")`
+/// would otherwise give a relative path that resolves against the
+/// process's CWD (whatever `gtk4::Application::run` happened to set
+/// it to), which is never what we want for a runtime artifact.
 pub(crate) fn status_path() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|_| fallback_user_dir())
+        .unwrap_or_else(fallback_user_dir)
         .join("mac-notifications-status.json")
 }
 
@@ -71,23 +78,80 @@ fn fallback_user_dir_from(cache_dir: Option<PathBuf>) -> PathBuf {
     // SAFETY: `getuid()` is documented to always succeed and never
     // return an error per POSIX. The `unsafe` is purely the FFI tag.
     let uid = unsafe { libc::getuid() };
-    let dir = PathBuf::from("/tmp").join(format!("nwg-notifications-{uid}"));
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        log::error!(
-            "Failed to create per-user fallback dir {}: {}",
-            dir.display(),
-            e
-        );
+    let preferred = PathBuf::from("/tmp").join(format!("nwg-notifications-{uid}"));
+    if try_create_or_validate(&preferred, uid) {
+        return preferred;
     }
-    use std::os::unix::fs::PermissionsExt;
-    if let Err(e) = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)) {
+    // The preferred per-UID path failed safety checks (foreign owner,
+    // symlink, regular file, or wrong mode that we couldn't fix).
+    // Fall through to a per-PID variant to avoid following an
+    // attacker-controlled path. Persistence across daemon restarts
+    // is sacrificed in this branch — but this whole function only
+    // runs in the truly degraded "no XDG dirs at all" environment,
+    // where losing history-file persistence is the better trade.
+    let pid_suffixed =
+        PathBuf::from("/tmp").join(format!("nwg-notifications-{uid}-{}", std::process::id()));
+    if try_create_or_validate(&pid_suffixed, uid) {
         log::warn!(
-            "Failed to set 0700 perms on fallback dir {}: {}",
-            dir.display(),
-            e
+            "Falling back to per-process dir {} because {} failed safety checks; \
+             persisted history will not survive daemon restarts in this configuration.",
+            pid_suffixed.display(),
+            preferred.display()
         );
+        return pid_suffixed;
     }
-    dir
+    log::error!(
+        "Both {} and {} failed safety checks; subsequent file writes will likely fail.",
+        preferred.display(),
+        pid_suffixed.display()
+    );
+    preferred
+}
+
+/// Tries to create `dir` with mode `0700` atomically (single
+/// `mkdir(2)` call, never `mkdir -p`-style pre-creation). If `dir`
+/// already exists, validates that it's a real directory owned by
+/// `uid` with mode `0700` — refuses (returns false) if any check
+/// fails. Returns true on a successful create or a successful
+/// validate of a pre-existing dir.
+///
+/// Refusing on validation failure is what bounds the symlink-clobber
+/// and foreign-owned-dir attacks: if `/tmp/nwg-notifications-<uid>`
+/// already exists as a symlink to `/etc/`, or as a directory owned
+/// by another user, we won't return its path for subsequent file
+/// writes. The caller falls through to a per-PID alternative or
+/// logs an error.
+fn try_create_or_validate(dir: &std::path::Path, uid: libc::uid_t) -> bool {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            match std::fs::symlink_metadata(dir) {
+                Ok(meta) => {
+                    let is_dir = meta.file_type().is_dir();
+                    let owned = meta.uid() == uid;
+                    let mode = meta.permissions().mode() & 0o777;
+                    if is_dir && owned && mode == 0o700 {
+                        return true;
+                    }
+                    log::error!(
+                        "Fallback dir {} fails safety checks (is_dir={is_dir}, \
+                         owned_by_us={owned}, mode={mode:o} expected 0700). Refusing to use.",
+                        dir.display()
+                    );
+                    false
+                }
+                Err(e) => {
+                    log::error!("Failed to stat fallback dir {}: {}", dir.display(), e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to create fallback dir {}: {}", dir.display(), e);
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -193,6 +257,29 @@ mod tests {
             mode, 0o700,
             "fallback dir must be mode 0700 to bound cross-user reads, got {:o}",
             mode
+        );
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&tmpdir);
+    }
+
+    #[test]
+    fn try_create_or_validate_refuses_when_path_is_a_regular_file() {
+        // Pre-create the path as a regular file, then ask
+        // try_create_or_validate to handle it. It should refuse
+        // (return false) rather than treat the file as a directory
+        // — that's the symlink-clobber-class defense at work.
+        let tmpdir =
+            std::env::temp_dir().join(format!("nwg-paths-safety-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmpdir).expect("setup tmpdir");
+        let trap = tmpdir.join("trap-as-file");
+        std::fs::write(&trap, b"i am a regular file, not a directory").expect("setup trap");
+
+        // SAFETY: getuid() is always-succeed POSIX FFI.
+        let uid = unsafe { libc::getuid() };
+        assert!(
+            !try_create_or_validate(&trap, uid),
+            "try_create_or_validate must refuse a path that exists as a non-directory"
         );
 
         // Cleanup.
