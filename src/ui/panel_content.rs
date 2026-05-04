@@ -84,9 +84,9 @@ fn build_group(
 
     // Collapse indicator: shows count and arrow
     let collapse_text = if should_collapse {
-        format!("{} \u{25BC}", total) // ▼ collapsed
+        format!("{total} \u{25BC}") // ▼ collapsed
     } else {
-        format!("{}", total)
+        format!("{total}")
     };
     let count_label = gtk4::Label::new(Some(&collapse_text));
     count_label.add_css_class("group-count");
@@ -158,7 +158,7 @@ fn build_group(
             *is_expanded = !*is_expanded;
             overflow_ref.set_visible(*is_expanded);
             let arrow = if *is_expanded { "\u{25B2}" } else { "\u{25BC}" };
-            count_ref.set_text(&format!("{} {}", total_count, arrow));
+            count_ref.set_text(&format!("{total_count} {arrow}"));
         });
         header.add_controller(click);
     }

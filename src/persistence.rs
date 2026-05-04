@@ -10,7 +10,7 @@ use std::path::Path;
 pub(crate) fn load_history(path: &Path) -> Vec<Notification> {
     match std::fs::read_to_string(path) {
         Ok(json) => serde_json::from_str(&json).unwrap_or_else(|e| {
-            log::warn!("Failed to parse notification history: {}", e);
+            log::warn!("Failed to parse notification history: {e}");
             Vec::new()
         }),
         Err(_) => Vec::new(),
@@ -22,10 +22,10 @@ pub(crate) fn save_history(path: &Path, history: &[Notification]) {
     match serde_json::to_string(history) {
         Ok(json) => {
             if let Err(e) = std::fs::write(path, json) {
-                log::error!("Failed to save notification history: {}", e);
+                log::error!("Failed to save notification history: {e}");
             }
         }
-        Err(e) => log::error!("Failed to serialize notification history: {}", e),
+        Err(e) => log::error!("Failed to serialize notification history: {e}"),
     }
 }
 

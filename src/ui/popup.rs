@@ -174,7 +174,9 @@ impl PopupManager {
     /// Recalculates top margins for all popups after one is removed.
     fn restack(&self) {
         for (i, popup) in self.popups.iter().enumerate() {
-            let offset = POPUP_TOP_MARGIN + (i as i32) * (self.estimated_height() + POPUP_GAP);
+            let offset = POPUP_TOP_MARGIN
+                + i32::try_from(i).expect("popup index bounded by max_popups")
+                    * (self.estimated_height() + POPUP_GAP);
             let is_top = matches!(
                 self.config.borrow().popup_position,
                 crate::config::PopupPosition::TopRight
@@ -190,7 +192,9 @@ impl PopupManager {
     }
 
     fn calculate_offset(&self) -> i32 {
-        POPUP_TOP_MARGIN + (self.popups.len() as i32) * (self.estimated_height() + POPUP_GAP)
+        POPUP_TOP_MARGIN
+            + i32::try_from(self.popups.len()).expect("popup count bounded by max_popups")
+                * (self.estimated_height() + POPUP_GAP)
     }
 
     fn estimated_height(&self) -> i32 {
@@ -202,7 +206,7 @@ impl PopupManager {
             return 0; // never auto-dismiss critical
         }
         if notif.timeout_ms > 0 {
-            notif.timeout_ms as u64
+            u64::try_from(notif.timeout_ms).expect("> 0 guard above ensures non-negative")
         } else {
             self.config.borrow().popup_timeout
         }
@@ -322,7 +326,7 @@ fn focused_gdk_monitor(compositor: &dyn Compositor) -> Option<gtk4::gdk::Monitor
 
     let display = gtk4::gdk::Display::default()?;
     let monitors = display.monitors();
-    let item = monitors.item(focused_idx as u32)?;
+    let item = monitors.item(u32::try_from(focused_idx).expect("monitor index fits in u32"))?;
     item.downcast::<gtk4::gdk::Monitor>().ok()
 }
 

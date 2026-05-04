@@ -338,8 +338,7 @@ mod tests {
             & PERMISSION_BITS_MASK;
         assert_eq!(
             mode, FALLBACK_DIR_MODE,
-            "fallback dir must be mode {:o} to bound cross-user reads, got {mode:o}",
-            FALLBACK_DIR_MODE
+            "fallback dir must be mode {FALLBACK_DIR_MODE:o} to bound cross-user reads, got {mode:o}"
         );
 
         // Cleanup.

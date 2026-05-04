@@ -95,10 +95,10 @@ pub(crate) fn update_status(unread: usize, dnd: bool) {
     match serde_json::to_string(&status) {
         Ok(json) => {
             if let Err(e) = std::fs::write(&path, json) {
-                log::error!("Failed to write waybar status: {}", e);
+                log::error!("Failed to write waybar status: {e}");
             }
         }
-        Err(e) => log::error!("Failed to serialize waybar status: {}", e),
+        Err(e) => log::error!("Failed to serialize waybar status: {e}"),
     }
 
     signal_waybar();

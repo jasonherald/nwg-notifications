@@ -48,12 +48,12 @@ fn main() {
     if config.count {
         match dbus::query_count_via_dbus() {
             Ok(count) => {
-                println!("{}", count);
+                println!("{count}");
                 std::process::exit(0);
             }
             Err(e) => {
-                log::error!("Failed to query count: {}", e);
-                eprintln!("Failed to query count: {}", e);
+                log::error!("Failed to query count: {e}");
+                eprintln!("Failed to query count: {e}");
                 eprintln!("(is the nwg-notifications daemon running?)");
                 std::process::exit(1);
             }
@@ -81,19 +81,32 @@ fn main() {
                         .to_string();
                     dbus::push_popup_position(&raw)
                 }
-                "popup_width" => dbus::push_popup_width(config.popup_width as u32),
-                "panel_width" => dbus::push_panel_width(config.panel_width as u32),
-                "popup_timeout" => dbus::push_popup_timeout(config.popup_timeout as u32),
-                "max_popups" => dbus::push_max_popups(config.max_popups as u32),
-                "max_history" => dbus::push_max_history(config.max_history as u32),
+                "popup_width" => dbus::push_popup_width(
+                    u32::try_from(config.popup_width)
+                        .expect("popup-width validated by clap range parser"),
+                ),
+                "panel_width" => dbus::push_panel_width(
+                    u32::try_from(config.panel_width)
+                        .expect("panel-width validated by clap range parser"),
+                ),
+                "popup_timeout" => dbus::push_popup_timeout(
+                    u32::try_from(config.popup_timeout)
+                        .expect("popup-timeout validated by clap range parser"),
+                ),
+                "max_popups" => dbus::push_max_popups(
+                    u32::try_from(config.max_popups)
+                        .expect("max-popups validated by clap range parser"),
+                ),
+                "max_history" => dbus::push_max_history(
+                    u32::try_from(config.max_history)
+                        .expect("max-history validated by clap range parser"),
+                ),
                 _ => unreachable!("user_set_live_args returns only known names"),
             };
             if let Err(e) = push_result {
                 if dbus::is_unknown_method_error(&e) {
                     log::error!(
-                        "Failed to update {} (unknown D-Bus method on running daemon): {}",
-                        name,
-                        e
+                        "Failed to update {name} (unknown D-Bus method on running daemon): {e}"
                     );
                     eprintln!(
                         "Failed to update {name}: the running daemon doesn't recognise this D-Bus method.\n\
@@ -104,7 +117,7 @@ fn main() {
                          Underlying error: {e}"
                     );
                 } else {
-                    log::error!("Failed to update {}: {}", name, e);
+                    log::error!("Failed to update {name}: {e}");
                     eprintln!("Failed to update {name}: {e}");
                 }
                 had_error = true;
@@ -119,7 +132,7 @@ fn main() {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
-                log::info!("Already running (pid {})", pid);
+                log::info!("Already running (pid {pid})");
             }
             std::process::exit(0);
         }
@@ -234,7 +247,7 @@ fn activate_notifications(
     let on_change_close = Rc::clone(&on_state_change);
     let popup_mgr_close = Rc::clone(&popup_mgr);
     let on_close: dbus::OnClose = Rc::new(move |id| {
-        log::debug!("Notification {} closed via D-Bus", id);
+        log::debug!("Notification {id} closed via D-Bus");
         popup_mgr_close.borrow_mut().dismiss(id);
         on_change_close();
     });

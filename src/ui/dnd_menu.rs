@@ -216,7 +216,7 @@ fn build_timed_dnd_button(
     btn.connect_clicked(move |_| {
         let expiry = std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
         state_btn.borrow_mut().set_dnd(true, Some(expiry));
-        log::info!("DND enabled for {} minutes", minutes);
+        log::info!("DND enabled for {minutes} minutes");
 
         // Capture the expiry we just stored. If the user clicks a
         // different duration before this timer fires, the stored
