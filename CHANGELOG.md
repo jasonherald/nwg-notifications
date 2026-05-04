@@ -11,9 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.4.1] — Unreleased
+
 ## [0.4.0] — 2026-05-04
 
-### Changed (Breaking)
+Closes the post-v0.3.4 polish-pass epic (#29). Everything in v0.4.0
+except the rename itself was internal cleanup; the rename is the one
+breaking change that pushed the version bump from patch to minor.
+v0.4.0 is still pre-1.0 — the breaking change here is bounded to the
+runtime-artifact filenames + a one-release lock-name transition,
+spelled out below.
+
+### Changed
 
 - **Renamed runtime artifacts from `mac-notifications-*` to
   `nwg-notifications-*`** (#34). Four user-visible legacy
@@ -45,16 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `mac-notification-dnd-backdrop` → `nwg-notification-backdrop`
     and `nwg-notification-dnd-backdrop`. Visible to compositors
     that rule-match on namespace.
-
-### Notes
-
-- Closes the post-v0.3.4 polish-pass epic (#29). Everything in
-  v0.4.0 except the rename itself was internal cleanup; the rename
-  is the one breaking change that pushed the version bump from
-  patch to minor.
-- `0.4.0` is still pre-1.0; the breaking change here is bounded to
-  the runtime-artifact filenames + a one-release lock-name
-  transition, all spelled out above.
 
 ## [0.3.5] — 2026-05-03
 
