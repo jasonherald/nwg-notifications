@@ -111,7 +111,7 @@ Insert a comment **above the first** of the two `_ =>` arms (the one in `handle_
             log::warn!("Unknown D-Bus method: {method}");
 ```
 
-The second `_ =>` arm in `handle_nwg_count_method` has the same shape and policy — leave it without a duplicate comment, since the explanation lives 200 lines up at the first occurrence and they're co-located in the same file.
+The second `_ =>` arm in `handle_nwg_count_method` has the same shape and policy — leave it without a duplicate comment. The rationale lives at the `_ =>` arm in `handle_method` (the freedesktop dispatcher) just upthread; both are in `src/dbus.rs`, so a reader who sees the second arm without a comment can find the first one with a quick `grep` for `Unknown D-Bus method`.
 
 - [ ] **Step 4: Build, test, clippy, fmt**
 
@@ -152,10 +152,10 @@ called out:
    or forward-compat client we shouldn't page on, the CLI side
    is an actionable user-facing failure ("restart the daemon").
    But reading both at once is jarring without context. Added
-   a comment above the first `_ =>` arm in handle_method
-   explaining the split. The second arm in handle_nwg_count_method
-   shares the policy and lives in the same file ~200 lines
-   below; one comment covers both.
+   a comment above the `_ =>` arm in handle_method explaining
+   the split. The sibling `_ =>` arm in handle_nwg_count_method
+   shares the policy and lives in the same file (src/dbus.rs);
+   one comment covers both.
 
 No behavioral change. Test count unchanged at 91; clippy clean
 even with the stricter -W clippy::uninlined_format_args lint
