@@ -128,6 +128,27 @@ fn main() {
         std::process::exit(if had_error { 1 } else { 0 });
     }
 
+    // One-release backwards-compat: detect a v0.3.x daemon that's
+    // still using the legacy "mac-notifications" singleton lock
+    // name. If one is found, refuse to start so we don't end up
+    // with two notification daemons fighting over the
+    // org.freedesktop.Notifications D-Bus name during the upgrade
+    // window. Will be removed in v0.5.0 (one-release deprecation
+    // window per the CHANGELOG entry for #34).
+    if let Some(legacy_pid) = singleton::find_running_pid("mac-notifications") {
+        log::info!(
+            "A legacy v0.3.x nwg-notifications daemon is running under the \
+             'mac-notifications' singleton lock (pid {legacy_pid}). Refusing \
+             to start. Stop the old daemon first: kill {legacy_pid}"
+        );
+        eprintln!(
+            "nwg-notifications: a legacy v0.3.x instance is already running \
+             (pid {legacy_pid}, under the old singleton-lock name 'mac-notifications')."
+        );
+        eprintln!("Stop it first:  kill {legacy_pid}");
+        std::process::exit(0);
+    }
+
     let _lock = match singleton::acquire_lock("nwg-notifications") {
         Ok(lock) => lock,
         Err(existing_pid) => {
