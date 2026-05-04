@@ -15,13 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] — 2026-05-04
 
-Closes the post-v0.3.4 polish-pass epic (#29). Everything in v0.4.0
-except the rename itself was internal cleanup; the rename is the one
-breaking change that pushed the version bump from patch to minor.
-v0.4.0 is still pre-1.0 — the breaking change here is bounded to the
-runtime-artifact filenames + a one-release lock-name transition,
-spelled out below.
-
 ### Changed
 
 - **Renamed runtime artifacts from `mac-notifications-*` to
