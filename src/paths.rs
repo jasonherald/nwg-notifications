@@ -16,7 +16,7 @@
 //! fails do we reach for `/tmp`, and even then we sandbox into a
 //! per-UID subdirectory with mode `0700` — never the world-writable
 //! root of `/tmp` directly. Writing notification history or the
-//! waybar status JSON to `/tmp/mac-notifications-*.json` would
+//! waybar status JSON to `/tmp/nwg-notifications-*.json` would
 //! expose them to symlink-clobber attacks (an attacker pre-creating
 //! the path as a symlink to a victim file) and to cross-user reads
 //! under permissive umasks. The per-UID subdir bounds both.
@@ -45,7 +45,7 @@ const FALLBACK_DIR_MODE: u32 = 0o700;
 /// Prefers `nwg_common`'s XDG-aware cache dir; falls back to a
 /// per-UID sandbox under `/tmp` if no XDG cache dir resolves.
 pub(crate) fn history_path() -> PathBuf {
-    fallback_user_dir().join("mac-notifications-history.json")
+    fallback_user_dir().join("nwg-notifications-history.json")
 }
 
 /// Returns the path to the waybar status JSON file.
@@ -62,7 +62,7 @@ pub(crate) fn status_path() -> PathBuf {
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(fallback_user_dir)
-        .join("mac-notifications-status.json")
+        .join("nwg-notifications-status.json")
 }
 
 /// Returns a directory the current user owns and can write to.
@@ -72,7 +72,7 @@ pub(crate) fn status_path() -> PathBuf {
 /// with mode `0700`. The per-UID subdirectory bounds two attacks
 /// that the previous bare-`/tmp` fallback was vulnerable to:
 /// - **Symlink-clobber on write.** An attacker who can predict the
-///   filename `/tmp/mac-notifications-history.json` could
+///   filename `/tmp/nwg-notifications-history.json` could
 ///   pre-create it as a symlink to a victim file before the daemon
 ///   writes. Putting the file inside `/tmp/nwg-notifications-<uid>/`
 ///   means the attacker would have to win the same race for a
@@ -295,7 +295,7 @@ mod tests {
             &[("XDG_RUNTIME_DIR", Some(runtime.to_str().unwrap()))],
             status_path,
         );
-        assert_eq!(actual, runtime.join("mac-notifications-status.json"));
+        assert_eq!(actual, runtime.join("nwg-notifications-status.json"));
 
         // Case 2: XDG_CACHE_HOME set → history_path uses it.
         // (cache_dir() reads XDG_CACHE_HOME first.)
@@ -303,7 +303,7 @@ mod tests {
             &[("XDG_CACHE_HOME", Some(cache.to_str().unwrap()))],
             history_path,
         );
-        assert_eq!(actual, cache.join("mac-notifications-history.json"));
+        assert_eq!(actual, cache.join("nwg-notifications-history.json"));
 
         // Case 3: XDG_RUNTIME_DIR unset, XDG_CACHE_HOME set →
         // status_path falls back through cache_dir.
@@ -314,7 +314,7 @@ mod tests {
             ],
             status_path,
         );
-        assert_eq!(actual, cache.join("mac-notifications-status.json"));
+        assert_eq!(actual, cache.join("nwg-notifications-status.json"));
 
         // Case 4: cache_dir resolves to None (truly degraded — no
         // $HOME, no $XDG_CACHE_HOME, no /etc/passwd entry) → per-UID

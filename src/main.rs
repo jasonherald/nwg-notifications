@@ -128,7 +128,7 @@ fn main() {
         std::process::exit(if had_error { 1 } else { 0 });
     }
 
-    let _lock = match singleton::acquire_lock("mac-notifications") {
+    let _lock = match singleton::acquire_lock("nwg-notifications") {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
@@ -145,7 +145,7 @@ fn main() {
     let sig_rx = listeners::start_signal_listener();
 
     let app = gtk4::Application::builder()
-        .application_id("com.mac-notifications.hyprland")
+        .application_id("com.nwg-notifications.hyprland")
         .build();
 
     let config = Rc::new(RefCell::new(config));

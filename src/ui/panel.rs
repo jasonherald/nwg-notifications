@@ -49,7 +49,7 @@ impl NotificationPanel {
         // outside the panel on any output (issue #55).
         let backdrops = nwg_common::layer_shell::create_fullscreen_backdrops(
             app,
-            "mac-notification-backdrop",
+            "nwg-notification-backdrop",
             "notification-backdrop",
             None,
         );
