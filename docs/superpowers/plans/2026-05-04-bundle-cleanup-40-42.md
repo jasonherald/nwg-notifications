@@ -4,7 +4,7 @@
 
 **Goal:** Bundle two micro-cleanup items from epic #29 — standardize on inlined-format-args (`{var}`) for every `log::*` / `format!` / `eprintln!` / `println!` call across the crate (#42) plus add a one-line rationale comment at each `Unknown D-Bus method` site, and replace the remaining non-trivial `as` casts with `try_from` / `From` (#40).
 
-**Architecture:** Both items are mechanical sweeps with no behavior change. #42 uses `cargo clippy --fix -- -W clippy::uninlined_format_args` to do the format-args rewrite (15 sites flagged today), then a manual pass for the rationale comment. #40 walks the inventoried list of `as` cast sites and applies one of three replacements (`u32::try_from(...).expect(...)`, `u64::from(...)`, `usize::try_from(...).expect(...)`) per site — pure layout-math casts whose bounds are obvious from a small constant (e.g. `popups.len() as i32` where `popups.len() <= max_popups`) get the `try_from(...).expect(...)` treatment so the safety case is documented inline.
+**Architecture:** Both items are mechanical sweeps with no behavior change. #42 uses `cargo clippy --fix -- -W clippy::uninlined_format_args` to do the format-args rewrite (25 fixes across 8 files when this plan was executed; the lint catches `format!`/`println!`/`eprintln!` beyond just `log::*`), then a manual pass for the rationale comment. #40 walks the inventoried list of `as` cast sites and applies one of three replacements (`u32::try_from(...).expect(...)`, `u64::from(...)`, `usize::try_from(...).expect(...)`) per site — pure layout-math casts whose bounds are obvious from a small constant (e.g. `popups.len() as i32` where `popups.len() <= max_popups`) get the `try_from(...).expect(...)` treatment so the safety case is documented inline.
 
 **Tech Stack:** Rust 2024 edition, `cargo clippy --fix` for the mechanical format-arg sweep, `try_from` + `expect` for documenting the safety case on previously-`as` cast sites.
 
@@ -16,7 +16,7 @@
 
 | Task | Files modified | Test approach |
 |------|----------------|---------------|
-| #42 log/format style + UnknownMethod rationale comment | `src/dbus.rs`, `src/persistence.rs`, `src/ui/dnd_menu.rs`, `src/ui/panel_content.rs`, `src/waybar.rs` (15 sites flagged by `clippy::uninlined_format_args`); `src/dbus.rs` again for the warn-vs-error rationale comment near both `Unknown D-Bus method` arms | `cargo clippy -- -D warnings` clean; `cargo test` still 91 green; `cargo clippy -- -W clippy::uninlined_format_args` empty |
+| #42 log/format style + UnknownMethod rationale comment | All `src/**/*.rs` files with `format!` / `log::*` / `println!` / `eprintln!` calls in the legacy positional `{}` form (`cargo clippy --fix` swept 25 fixes across 8 files when this plan was executed: `src/main.rs`, `src/dbus.rs`, `src/config.rs`, `src/persistence.rs`, `src/paths.rs`, `src/waybar.rs`, `src/ui/dnd_menu.rs`, `src/ui/panel_content.rs`); plus `src/dbus.rs` for the warn-vs-error rationale comment near both `Unknown D-Bus method` arms | `cargo clippy -- -D warnings` clean; `cargo test` still 91 green; `cargo clippy -- -W clippy::uninlined_format_args` empty |
 | #40 `as` → `try_from` / `From` | `src/main.rs` (5 sites in `--update` push dispatch), `src/ui/panel.rs` (1 site in `hide_panel` timeout), `src/ui/popup.rs` (4 sites: 2 layout-math, 1 timeout, 1 monitor index), `src/dbus.rs` (2 sites in `handle_set_max_*` lambdas) | `cargo build --release` + `cargo test` still green; clippy clean |
 
 Each issue gets its own commit. No CHANGELOG entry — pure internal cleanup with zero user-visible impact.
@@ -58,7 +58,7 @@ Expected: every step exits 0; pre-existing `cargo deny` "unmatched skip" warning
 15 `log::*` / `format!` / `eprintln!` calls use the legacy positional `{}` form (`log::warn!("Unknown method: {}", method)`); only one in the crate uses the interpolated form (`log::debug!("Failed to signal waybar: {e}")`). The interpolated form is what `clippy::uninlined_format_args` recommends, what `cargo clippy --fix` will rewrite to, and what the rest of the rust ecosystem is converging on. Standardize on it everywhere.
 
 **Files:**
-- Modify (mechanical): `src/dbus.rs`, `src/persistence.rs`, `src/ui/dnd_menu.rs`, `src/ui/panel_content.rs`, `src/waybar.rs` (the 15 sites `clippy::uninlined_format_args` currently flags).
+- Modify (mechanical): every `src/**/*.rs` file with a positional-`{}` `format!` / `log::*` / `println!` / `eprintln!` call. When this plan was executed, `cargo clippy --fix` landed 25 fixes across 8 files: `src/main.rs`, `src/dbus.rs`, `src/config.rs`, `src/persistence.rs`, `src/paths.rs`, `src/waybar.rs`, `src/ui/dnd_menu.rs`, `src/ui/panel_content.rs`. Re-run the lint afterward to confirm zero remaining hits.
 - Modify (manual): `src/dbus.rs` — one rationale comment near each `_ => log::warn!("Unknown ... D-Bus method: ...")` arm explaining the daemon-side `warn` vs CLI-side `error` split.
 
 - [ ] **Step 1: Apply the mechanical format-args sweep**
@@ -67,7 +67,7 @@ Expected: every step exits 0; pre-existing `cargo deny` "unmatched skip" warning
 cargo clippy --fix --all-targets --allow-staged -- -W clippy::uninlined_format_args
 ```
 
-Expected: clippy auto-applies the suggestion to all 15 sites. The `--allow-staged` flag is safe here because the only changes in the working tree are this plan file's commit (already staged + committed in pre-flight).
+Expected: clippy auto-applies the suggestion across every site it flags (25 fixes across 8 files when this plan was originally executed; the actual count on a re-run depends on what's accumulated in the codebase since). The `--allow-staged` flag is safe here because the only changes in the working tree are this plan file's commit (already staged + committed in pre-flight).
 
 - [ ] **Step 2: Verify the sweep landed cleanly + lint stays green going forward**
 
@@ -343,7 +343,7 @@ If `cargo fmt --check` reports drift (likely on `main.rs` after the multi-line r
 - [ ] **Step 6: Confirm no remaining non-trivial `as` casts in the touched files**
 
 ```bash
-grep -rn " as u32\b\| as i32\b\| as u64\b\| as usize\b" src/main.rs src/ui/popup.rs src/ui/panel.rs src/dbus.rs | grep -v tests
+grep -nE " as (u32|i32|u64|usize)\>" src/main.rs src/ui/popup.rs src/ui/panel.rs src/dbus.rs | grep -v tests
 ```
 
 Expected: no matches outside test code. (Test code has 2 `as usize` casts in `dbus.rs`'s `unread_count_to_u32_*` tests for `u32::MAX as usize` arithmetic — those are the trivial/obvious cases and stay.)
