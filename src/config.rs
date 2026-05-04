@@ -224,7 +224,7 @@ mod tests {
         let set = user_set_live_args(&matches);
         assert!(set.contains(&"popup_position"));
         assert!(set.contains(&"popup_width"));
-        assert_eq!(set.len(), 2, "got {:?}", set);
+        assert_eq!(set.len(), 2, "got {set:?}");
     }
 
     #[test]

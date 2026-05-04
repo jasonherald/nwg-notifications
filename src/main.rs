@@ -48,12 +48,12 @@ fn main() {
     if config.count {
         match dbus::query_count_via_dbus() {
             Ok(count) => {
-                println!("{}", count);
+                println!("{count}");
                 std::process::exit(0);
             }
             Err(e) => {
-                log::error!("Failed to query count: {}", e);
-                eprintln!("Failed to query count: {}", e);
+                log::error!("Failed to query count: {e}");
+                eprintln!("Failed to query count: {e}");
                 eprintln!("(is the nwg-notifications daemon running?)");
                 std::process::exit(1);
             }
@@ -91,9 +91,7 @@ fn main() {
             if let Err(e) = push_result {
                 if dbus::is_unknown_method_error(&e) {
                     log::error!(
-                        "Failed to update {} (unknown D-Bus method on running daemon): {}",
-                        name,
-                        e
+                        "Failed to update {name} (unknown D-Bus method on running daemon): {e}"
                     );
                     eprintln!(
                         "Failed to update {name}: the running daemon doesn't recognise this D-Bus method.\n\
@@ -104,7 +102,7 @@ fn main() {
                          Underlying error: {e}"
                     );
                 } else {
-                    log::error!("Failed to update {}: {}", name, e);
+                    log::error!("Failed to update {name}: {e}");
                     eprintln!("Failed to update {name}: {e}");
                 }
                 had_error = true;
@@ -119,7 +117,7 @@ fn main() {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
-                log::info!("Already running (pid {})", pid);
+                log::info!("Already running (pid {pid})");
             }
             std::process::exit(0);
         }
@@ -234,7 +232,7 @@ fn activate_notifications(
     let on_change_close = Rc::clone(&on_state_change);
     let popup_mgr_close = Rc::clone(&popup_mgr);
     let on_close: dbus::OnClose = Rc::new(move |id| {
-        log::debug!("Notification {} closed via D-Bus", id);
+        log::debug!("Notification {id} closed via D-Bus");
         popup_mgr_close.borrow_mut().dismiss(id);
         on_change_close();
     });

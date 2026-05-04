@@ -140,14 +140,14 @@ pub(crate) fn register_server(
         NWG_COUNT_BUS_NAME,
         gio::BusNameOwnerFlags::REPLACE,
         move |connection, _name| {
-            log::info!("Acquired D-Bus name: {}", NWG_COUNT_BUS_NAME);
+            log::info!("Acquired D-Bus name: {NWG_COUNT_BUS_NAME}");
             register_nwg_count_object(&connection, &state_nwg, &config_nwg, &on_change_nwg);
         },
         |_connection, _name| {
             log::debug!("nwg-count D-Bus name acquired callback");
         },
         |_connection, _name| {
-            log::error!("Lost D-Bus name {} — another daemon?", NWG_COUNT_BUS_NAME);
+            log::error!("Lost D-Bus name {NWG_COUNT_BUS_NAME} — another daemon?");
         },
     );
 }
@@ -212,8 +212,18 @@ fn handle_method(
         "CloseNotification" => handle_close(&params, invocation, state, on_close),
         "GetCapabilities" => handle_capabilities(invocation),
         "GetServerInformation" => handle_server_info(invocation),
+        // Daemon-side unknown-method dispatch is `warn`, not `error`:
+        // the freedesktop `Notify` D-Bus surface is open enough that a
+        // misbehaving client (or a forward-compat probe) calling a
+        // method we don't implement is something to log but not page on.
+        // The mirror site on the *client* side — `--update` against a
+        // stale daemon in `main.rs`'s `is_unknown_method_error` branch —
+        // is `error` because there it's an actionable failure for the
+        // human running the CLI ("restart the daemon"). Same wire-level
+        // condition, different side, different severity. The sibling
+        // arm in `handle_nwg_count_method` shares this policy.
         _ => {
-            log::warn!("Unknown D-Bus method: {}", method);
+            log::warn!("Unknown D-Bus method: {method}");
             invocation.return_dbus_error(
                 "org.freedesktop.DBus.Error.UnknownMethod",
                 &format!("Unknown method: {method}"),
@@ -377,7 +387,7 @@ fn handle_nwg_count_method(
             },
         ),
         _ => {
-            log::warn!("Unknown nwg-count D-Bus method: {}", method);
+            log::warn!("Unknown nwg-count D-Bus method: {method}");
             invocation.return_dbus_error(
                 "org.freedesktop.DBus.Error.UnknownMethod",
                 &format!("Unknown method: {method}"),
@@ -570,7 +580,7 @@ pub(crate) fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, act
         "ActionInvoked",
         Some(&params),
     ) {
-        log::warn!("Failed to emit ActionInvoked: {}", e);
+        log::warn!("Failed to emit ActionInvoked: {e}");
     }
 }
 
@@ -581,10 +591,7 @@ pub(crate) fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, act
 /// `u32::MAX` if it ever does happen rather than silently truncating.
 pub(crate) fn unread_count_to_u32(unread: usize) -> u32 {
     u32::try_from(unread).unwrap_or_else(|_| {
-        log::error!(
-            "Unread count {} exceeds u32::MAX; clamping for D-Bus payload",
-            unread
-        );
+        log::error!("Unread count {unread} exceeds u32::MAX; clamping for D-Bus payload");
         u32::MAX
     })
 }
@@ -785,7 +792,7 @@ pub(crate) fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
         "CountChanged",
         Some(&params),
     ) {
-        log::warn!("Failed to emit CountChanged: {}", e);
+        log::warn!("Failed to emit CountChanged: {e}");
     }
 }
 
