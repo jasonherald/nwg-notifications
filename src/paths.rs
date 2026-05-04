@@ -23,6 +23,16 @@
 
 use std::path::PathBuf;
 
+/// Permission mode for the per-UID `/tmp` fallback sandbox dir.
+/// `0o700` = owner read/write/execute, no access for group or other.
+/// Both required: `r/w` for the daemon to manage its files, `x` to
+/// open files inside the dir at all. Group/other are denied so a
+/// permissive umask on a created file still leaves cross-user reads
+/// blocked at the parent-dir level. Named so the create site, the
+/// validation check, and the unit-test assertion share one source
+/// of truth.
+const FALLBACK_DIR_MODE: u32 = 0o700;
+
 /// Returns the path to the persisted notification history JSON file.
 /// Prefers `nwg_common`'s XDG-aware cache dir; falls back to a
 /// per-UID sandbox under `/tmp` if no XDG cache dir resolves.
@@ -123,7 +133,10 @@ fn fallback_user_dir_from(cache_dir: Option<PathBuf>) -> PathBuf {
 /// logs an error.
 fn try_create_or_validate(dir: &std::path::Path, uid: libc::uid_t) -> bool {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+    match std::fs::DirBuilder::new()
+        .mode(FALLBACK_DIR_MODE)
+        .create(dir)
+    {
         Ok(()) => true,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             match std::fs::symlink_metadata(dir) {
@@ -131,13 +144,14 @@ fn try_create_or_validate(dir: &std::path::Path, uid: libc::uid_t) -> bool {
                     let is_dir = meta.file_type().is_dir();
                     let owned = meta.uid() == uid;
                     let mode = meta.permissions().mode() & 0o777;
-                    if is_dir && owned && mode == 0o700 {
+                    if is_dir && owned && mode == FALLBACK_DIR_MODE {
                         return true;
                     }
                     log::error!(
                         "Fallback dir {} fails safety checks (is_dir={is_dir}, \
-                         owned_by_us={owned}, mode={mode:o} expected 0700). Refusing to use.",
-                        dir.display()
+                         owned_by_us={owned}, mode={mode:o} expected {:o}). Refusing to use.",
+                        dir.display(),
+                        FALLBACK_DIR_MODE
                     );
                     false
                 }
@@ -254,9 +268,9 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(
-            mode, 0o700,
-            "fallback dir must be mode 0700 to bound cross-user reads, got {:o}",
-            mode
+            mode, FALLBACK_DIR_MODE,
+            "fallback dir must be mode {:o} to bound cross-user reads, got {mode:o}",
+            FALLBACK_DIR_MODE
         );
 
         // Cleanup.
