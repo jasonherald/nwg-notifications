@@ -11,6 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.4.0] — 2026-05-04
+
+### Changed (Breaking)
+
+- **Renamed runtime artifacts from `mac-notifications-*` to
+  `nwg-notifications-*`** (#34). Four user-visible legacy
+  identifiers carried over from the pre-split mac-doc-hyprland
+  monorepo era and were inconsistent with the binary name + every
+  user-facing doc. Specifically:
+  - `$XDG_CACHE_HOME/mac-notifications-history.json` →
+    `$XDG_CACHE_HOME/nwg-notifications-history.json` (history JSON).
+    **Migrated automatically on first startup** — the daemon copies
+    the legacy file to the new path then unlinks the legacy file,
+    so users with persisted history don't lose anything. Idempotent
+    on subsequent startups.
+  - `$XDG_RUNTIME_DIR/mac-notifications-status.json` →
+    `$XDG_RUNTIME_DIR/nwg-notifications-status.json` (waybar status
+    JSON). **Manual update required** — anyone with a custom waybar
+    config referencing the old path needs to point it at the new
+    path. The README waybar snippet already shows the new path. The
+    daemon writes the new file on every state change after upgrade;
+    the legacy file becomes stale (clear it manually if you care).
+  - Singleton lock name `mac-notifications` → `nwg-notifications`.
+    **One-release transition.** v0.4.0 peeks for a v0.3.x daemon
+    under the legacy lock name on startup and refuses to start if
+    one is running, with a clear `kill <pid>` message — so
+    upgrading mid-session is safe. v0.5.0 will drop this peek.
+  - GTK `application_id` `com.mac-notifications.hyprland` →
+    `com.nwg-notifications.hyprland`. Visible to D-Bus
+    introspection and any compositor rule-matching on app-id.
+  - Layer-shell namespaces `mac-notification-backdrop` and
+    `mac-notification-dnd-backdrop` → `nwg-notification-backdrop`
+    and `nwg-notification-dnd-backdrop`. Visible to compositors
+    that rule-match on namespace.
+
+### Notes
+
+- Closes the post-v0.3.4 polish-pass epic (#29). Everything in
+  v0.4.0 except the rename itself was internal cleanup; the rename
+  is the one breaking change that pushed the version bump from
+  patch to minor.
+- `0.4.0` is still pre-1.0; the breaking change here is bounded to
+  the runtime-artifact filenames + a one-release lock-name
+  transition, all spelled out above.
+
 ## [0.3.5] — 2026-05-03
 
 ### Fixed
