@@ -110,13 +110,52 @@ fn fallback_user_dir_from(cache_dir: Option<PathBuf>) -> PathBuf {
         );
         return pid_suffixed;
     }
+    // Both deterministic paths failed safety checks. Try randomized
+    // names — a per-attempt nanos suffix is much harder for an
+    // attacker to pre-create as a trap than the predictable per-UID
+    // / per-PID names. Returning the unvalidated `preferred` here
+    // would let later writes follow whatever attacker-controlled
+    // path occupied that name.
+    let mut last_attempted = pid_suffixed.clone();
+    for attempt in 0..RANDOMIZED_FALLBACK_ATTEMPTS {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let randomized =
+            PathBuf::from("/tmp").join(format!("nwg-notifications-{uid}-r{attempt}-{nanos:x}"));
+        last_attempted = randomized.clone();
+        if try_create_or_validate(&randomized, uid) {
+            log::warn!(
+                "Falling back to randomized dir {} after both per-UID ({}) and per-PID ({}) \
+                 variants failed safety checks; persisted history will not survive daemon restarts.",
+                randomized.display(),
+                preferred.display(),
+                pid_suffixed.display()
+            );
+            return randomized;
+        }
+    }
+    // All retries exhausted. Return the *last* randomized path
+    // we tried (rather than `preferred`) so subsequent file writes
+    // hit a path that try_create_or_validate already rejected and
+    // fail loudly, rather than silently following a trap symlink
+    // or foreign-owned dir at the predictable per-UID name.
     log::error!(
-        "Both {} and {} failed safety checks; subsequent file writes will likely fail.",
-        preferred.display(),
-        pid_suffixed.display()
+        "All {} randomized fallback dirs failed safety checks (last tried: {}). \
+         Subsequent file writes will fail; the daemon's /tmp environment is unsafe.",
+        RANDOMIZED_FALLBACK_ATTEMPTS,
+        last_attempted.display()
     );
-    preferred
+    last_attempted
 }
+
+/// How many randomized names to try when the deterministic per-UID
+/// and per-PID fallback paths both fail safety checks. 16 is
+/// generous — any single attempt has astronomically low collision
+/// probability with a nanos-based suffix, so 16 covers even an
+/// attacker actively racing to claim names.
+const RANDOMIZED_FALLBACK_ATTEMPTS: u32 = 16;
 
 /// Tries to create `dir` with mode `0700` atomically (single
 /// `mkdir(2)` call, never `mkdir -p`-style pre-creation). If `dir`
@@ -179,37 +218,59 @@ mod tests {
     /// keeps every assertion in one self-contained scope.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    /// RAII guard: snapshots the env vars listed in the supplied
+    /// overrides on construction, applies the overrides, and restores
+    /// the snapshot on Drop. Drop runs even if the test body panics,
+    /// so a panicking assertion inside `with_env` doesn't leave the
+    /// process environment polluted for subsequent tests.
+    struct EnvRestore {
+        snapshot: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn apply(overrides: &[(&str, Option<&str>)]) -> Self {
+            let mut snapshot: Vec<(String, Option<String>)> = Vec::new();
+            for (key, _) in overrides {
+                snapshot.push(((*key).to_string(), std::env::var(*key).ok()));
+            }
+            for (key, value) in overrides {
+                // SAFETY: env mutation is unsafe in Rust 2024; the
+                // ENV_LOCK Mutex (held by `with_env`'s caller)
+                // serializes our test cases so no other thread is
+                // racing. Other tests in the crate don't touch
+                // these vars.
+                unsafe {
+                    match value {
+                        Some(v) => std::env::set_var(key, v),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+            EnvRestore { snapshot }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, original) in self.snapshot.drain(..) {
+                // SAFETY: same justification as `apply` — ENV_LOCK
+                // serializes us with any other thread that touches
+                // these vars.
+                unsafe {
+                    match original {
+                        Some(v) => std::env::set_var(&key, v),
+                        None => std::env::remove_var(&key),
+                    }
+                }
+            }
+        }
+    }
+
     fn with_env<R>(history_overrides: &[(&str, Option<&str>)], body: impl FnOnce() -> R) -> R {
         let _guard = ENV_LOCK.lock().expect("env lock poisoned");
-        // Snapshot the vars we touch so we can restore them.
-        let mut snapshot: Vec<(&str, Option<String>)> = Vec::new();
-        for (key, _) in history_overrides {
-            snapshot.push((key, std::env::var(key).ok()));
-        }
-        // Apply overrides.
-        for (key, value) in history_overrides {
-            // SAFETY: env mutation is unsafe in Rust 2024; the
-            // ENV_LOCK Mutex serializes our four test cases so no
-            // other thread is racing. Other tests in the crate
-            // don't touch these vars.
-            unsafe {
-                match value {
-                    Some(v) => std::env::set_var(key, v),
-                    None => std::env::remove_var(key),
-                }
-            }
-        }
-        let result = body();
-        // Restore.
-        for (key, original) in snapshot {
-            unsafe {
-                match original {
-                    Some(v) => std::env::set_var(key, v),
-                    None => std::env::remove_var(key),
-                }
-            }
-        }
-        result
+        let _restore = EnvRestore::apply(history_overrides);
+        body()
+        // _restore drops here (or on panic unwind), restoring env.
     }
 
     #[test]
