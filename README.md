@@ -163,7 +163,7 @@ Add to `~/.config/waybar/config.jsonc`:
 
 ```jsonc
 "custom/notifications": {
-    "exec": "cat $XDG_RUNTIME_DIR/mac-notifications-status.json 2>/dev/null || echo '{\"text\":\"\",\"alt\":\"empty\",\"class\":\"empty\"}'",
+    "exec": "cat $XDG_RUNTIME_DIR/nwg-notifications-status.json 2>/dev/null || echo '{\"text\":\"\",\"alt\":\"empty\",\"class\":\"empty\"}'",
     "return-type": "json",
     "format": "{}",
     "on-click": "pkill -f -38 nwg-notifications",
@@ -173,7 +173,7 @@ Add to `~/.config/waybar/config.jsonc`:
 }
 ```
 
-The daemon writes its current state to `$XDG_RUNTIME_DIR/mac-notifications-status.json` and signals waybar (`SIGRTMIN+11`, which waybar receives as `signal: 11`) whenever the state changes — no polling.
+The daemon writes its current state to `$XDG_RUNTIME_DIR/nwg-notifications-status.json` and signals waybar (`SIGRTMIN+11`, which waybar receives as `signal: 11`) whenever the state changes — no polling.
 
 ## Querying notification count
 
@@ -212,7 +212,7 @@ The waybar status JSON includes a `count` field — useful when you already
 have `SIGRTMIN+11` wired up:
 
 ```bash
-jq -r .count "$XDG_RUNTIME_DIR/mac-notifications-status.json"
+jq -r .count "$XDG_RUNTIME_DIR/nwg-notifications-status.json"
 ```
 
 ## Live config updates
