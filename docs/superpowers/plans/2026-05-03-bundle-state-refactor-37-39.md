@@ -16,7 +16,7 @@
 
 | Task | Files modified | Test approach |
 |------|----------------|---------------|
-| #39 paths module | New `src/paths.rs` (lifts both helpers); `src/main.rs` (declares `mod paths;`); `src/persistence.rs` (drops `history_path`, imports from `paths`); `src/waybar.rs` (drops `status_path`, imports from `paths`); `src/main.rs` (call site `persistence::history_path()` → `paths::history_path()`) | `cargo build --release` clean; `make lint` green; daemon still writes the same files |
+| #39 paths module | New `src/paths.rs` (lifts both helpers, **with per-UID `/tmp/nwg-notifications-<uid>/` mode-0700 sandbox + symlink/foreign-owner refusal as the degraded-environment fallback** — not raw `/tmp`); `src/main.rs` (declares `mod paths;`); `src/persistence.rs` (drops `history_path`); `src/waybar.rs` (drops `status_path`); `src/main.rs` (call site `persistence::history_path()` → `paths::history_path()`) | New `#[cfg(test)] mod tests` covers the four fallback cases (XDG_RUNTIME_DIR / XDG_CACHE_HOME / cache_dir-falls-through / per-UID sandbox) plus a `try_create_or_validate` safety-check refusal test; `make lint` green |
 | #37 set_dnd helper | `src/state.rs` (add `set_dnd` method, update existing test write site, add new unit test); `src/listeners.rs` (`ToggleDnd` arm); `src/ui/panel.rs` (panel header DND button); `src/ui/dnd_menu.rs` (3 sites: toggle, timed-DND button, timer-fire) | New unit test asserts the bug fix: enabling timed DND then toggling via signal correctly clears `dnd_expires` |
 
 Each issue gets its own commit. No CHANGELOG entry — internal refactor; the bug fix in #37 is a latent issue that's never been reported (the stale `dnd_expires` is mostly harmless because the timer-fire token check makes it a no-op if the user cycles quickly enough; worst case the timer fires later and re-clears DND that's already off, which is invisible).
@@ -62,6 +62,13 @@ Expected: every step exits 0; pre-existing `cargo deny` "unmatched skip" warning
 - Modify: `src/main.rs` — add `mod paths;` declaration alongside the existing `mod` lines + update the `persistence::history_path()` call site
 - Modify: `src/persistence.rs` — delete the local `history_path()` function (its body moves to `paths`); the file shouldn't import `paths` itself since `load_history` and `save_history` already take a `&Path` parameter
 - Modify: `src/waybar.rs` — delete the local `status_path()` function; the call site in `update_status` switches to `crate::paths::status_path()`
+
+**Note on the implementation that actually shipped:** the snippet below shows the bare-bones initial cut to keep the step focused. Two follow-up CodeRabbit findings on PR #58 hardened it before merge:
+- The `/tmp` fallback became a per-UID sandbox `/tmp/nwg-notifications-<uid>/` created with mode `0700` via atomic `mkdir(2)`. On `AlreadyExists` the helper validates `is_dir + owned_by_uid + mode == 0700` and refuses (falling through to a per-PID variant) if any check fails. Defends against symlink-clobber and foreign-owned-dir attacks the bare `/tmp/...` form was vulnerable to.
+- `XDG_RUNTIME_DIR=""` is filtered as if unset (otherwise `PathBuf::from("")` resolves status path against CWD).
+- A `#[cfg(test)] mod tests` covers all four fallback cases serially via a `Mutex<()>`, plus a `try_create_or_validate` safety-check refusal test.
+
+If you're re-running this plan from scratch on a fresh branch, prefer the hardened shape that's currently in `src/paths.rs` over the snippet below — the snippet stays as the *minimal first commit* that this plan originally produced; the hardening shipped as follow-up commits in the same PR.
 
 - [ ] **Step 1: Create `src/paths.rs`**
 
@@ -253,7 +260,7 @@ Five places currently mutate `state.dnd` (and sometimes `state.dnd_expires`). Th
 - Modify: `src/ui/panel.rs` — replace the panel-header button's direct write with `set_dnd`.
 - Modify: `src/ui/dnd_menu.rs` — replace 3 direct-write sites (toggle button, timed-DND button, timer-fire callback) with `set_dnd`.
 
-Note: `src/main.rs` initializes `state.borrow_mut().dnd = config.borrow().dnd;` at startup. That's a different shape (no log, no `on_state_change`, `dnd_expires` is already None from `NotificationState::new`) — it stays as-is.
+Note: `src/main.rs` initially kept the startup write as a direct field assignment (`state.borrow_mut().dnd = config.borrow().dnd;`) — it runs before the daemon is wired up, has no `on_state_change` to fire, and `dnd_expires` is already `None` from `NotificationState::new`. **That decision was reversed by a CodeRabbit follow-up on PR #58:** the `dnd` and `dnd_expires` fields are now fully private (the rabbit's "enforce the invariant at the type boundary" finding), so the startup init now reads `state.borrow_mut().set_dnd(initial_dnd, None)`. Cost: the daemon logs a `"DND enabled/disabled"` line at startup confirming whether `--dnd` was passed. Harmless and arguably useful.
 
 - [ ] **Step 1: Add `set_dnd` to `NotificationState` in `src/state.rs`**
 
@@ -568,7 +575,7 @@ The new `set_dnd_clears_stale_expiry_when_toggling_off` test should appear in th
 grep -rn "\.dnd\s*=\s*\|\.dnd_expires\s*=\s*" src/ --include="*.rs" | grep -v "tests"
 ```
 
-Expected: only one match — the startup initialization `state.borrow_mut().dnd = config.borrow().dnd;` inside `activate_notifications` in `src/main.rs`. That's the one direct write that intentionally stays — it runs before the daemon is wired up, has no `on_state_change` to fire, and `dnd_expires` is already `None` from `NotificationState::new`.
+Expected: only writes inside the `set_dnd` body itself (`self.dnd = enabled;` and `self.dnd_expires = ...;`). The startup initialization in `activate_notifications` (`src/main.rs`) was originally planned to keep its direct field write, but a follow-up CodeRabbit finding on PR #58 made the fields fully private and added accessors — the startup init now reads `state.borrow_mut().set_dnd(initial_dnd, None)` so the privatization is enforced everywhere. The field privacy is module-scoped (`#[cfg(test)] mod tests` in `src/state.rs` can still touch the fields directly).
 
 - [ ] **Step 11: Commit**
 
