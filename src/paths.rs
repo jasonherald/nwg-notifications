@@ -23,6 +23,14 @@
 
 use std::path::PathBuf;
 
+/// Mask isolating the standard Unix permission bits (owner +
+/// group + other × read/write/execute) from the rest of the
+/// `st_mode` field returned by `stat(2)` (which also encodes
+/// file type and the setuid/setgid/sticky bits we don't care
+/// about here). Used wherever we compare a `mode()` reading
+/// against `FALLBACK_DIR_MODE`.
+const PERMISSION_BITS_MASK: u32 = 0o777;
+
 /// Permission mode for the per-UID `/tmp` fallback sandbox dir.
 /// `0o700` = owner read/write/execute, no access for group or other.
 /// Both required: `r/w` for the daemon to manage its files, `x` to
@@ -182,7 +190,7 @@ fn try_create_or_validate(dir: &std::path::Path, uid: libc::uid_t) -> bool {
                 Ok(meta) => {
                     let is_dir = meta.file_type().is_dir();
                     let owned = meta.uid() == uid;
-                    let mode = meta.permissions().mode() & 0o777;
+                    let mode = meta.permissions().mode() & PERMISSION_BITS_MASK;
                     if is_dir && owned && mode == FALLBACK_DIR_MODE {
                         return true;
                     }
@@ -327,7 +335,7 @@ mod tests {
             .expect("fallback dir created")
             .permissions()
             .mode()
-            & 0o777;
+            & PERMISSION_BITS_MASK;
         assert_eq!(
             mode, FALLBACK_DIR_MODE,
             "fallback dir must be mode {:o} to bound cross-user reads, got {mode:o}",
