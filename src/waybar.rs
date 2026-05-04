@@ -1,6 +1,6 @@
 //! Waybar notification-module integration.
 //!
-//! Writes a small JSON status file at `$XDG_RUNTIME_DIR/mac-notifications-status.json`
+//! Writes a small JSON status file at `$XDG_RUNTIME_DIR/nwg-notifications-status.json`
 //! and signals waybar (`SIGRTMIN+11`) to refresh after every state change.
 //!
 //! The icon glyphs in the status text come from the [Material Design Icons]

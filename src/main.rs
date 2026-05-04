@@ -128,7 +128,28 @@ fn main() {
         std::process::exit(if had_error { 1 } else { 0 });
     }
 
-    let _lock = match singleton::acquire_lock("mac-notifications") {
+    // One-release backwards-compat: detect a v0.3.x daemon that's
+    // still using the legacy "mac-notifications" singleton lock
+    // name. If one is found, refuse to start so we don't end up
+    // with two notification daemons fighting over the
+    // org.freedesktop.Notifications D-Bus name during the upgrade
+    // window. Will be removed in v0.5.0 (one-release deprecation
+    // window per the CHANGELOG entry for #34).
+    if let Some(legacy_pid) = singleton::find_running_pid("mac-notifications") {
+        log::info!(
+            "A legacy v0.3.x nwg-notifications daemon is running under the \
+             'mac-notifications' singleton lock (pid {legacy_pid}). Refusing \
+             to start. Stop the old daemon first: kill {legacy_pid}"
+        );
+        eprintln!(
+            "nwg-notifications: a legacy v0.3.x instance is already running \
+             (pid {legacy_pid}, under the old singleton-lock name 'mac-notifications')."
+        );
+        eprintln!("Stop it first:  kill {legacy_pid}");
+        std::process::exit(0);
+    }
+
+    let _lock = match singleton::acquire_lock("nwg-notifications") {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
@@ -145,7 +166,7 @@ fn main() {
     let sig_rx = listeners::start_signal_listener();
 
     let app = gtk4::Application::builder()
-        .application_id("com.mac-notifications.hyprland")
+        .application_id("com.nwg-notifications.hyprland")
         .build();
 
     let config = Rc::new(RefCell::new(config));
@@ -189,6 +210,10 @@ fn activate_notifications(
     // confirms in the journal whether the user passed --dnd.
     let initial_dnd = config.borrow().dnd;
     state.borrow_mut().set_dnd(initial_dnd, None);
+
+    // One-time v0.3.x -> v0.4.0 history migration. Idempotent on
+    // every subsequent startup once the migration has run.
+    paths::migrate_history_if_needed();
 
     // Load persisted history
     let history_path = paths::history_path();
