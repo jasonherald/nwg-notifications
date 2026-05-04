@@ -346,7 +346,7 @@ If `cargo fmt --check` reports drift (likely on `main.rs` after the multi-line r
 grep -nE " as (u32|i32|u64|usize)\>" src/main.rs src/ui/popup.rs src/ui/panel.rs src/dbus.rs | grep -v tests
 ```
 
-Expected: no matches outside test code. (Test code has 2 `as usize` casts in `dbus.rs`'s `unread_count_to_u32_*` tests for `u32::MAX as usize` arithmetic — those are the trivial/obvious cases and stay.)
+Expected: no matches outside test code. (Test code has 3 `as usize` casts in `dbus.rs`'s `unread_count_to_u32_*` tests for `u32::MAX as usize` arithmetic — including a `u32::MAX as usize + 1` site — those are the trivial/obvious cases and stay.)
 
 - [ ] **Step 7: Commit**
 
@@ -380,7 +380,7 @@ that posture across the remaining non-trivial as cast sites,
   choice even though u32 -> usize is lossless on every supported
   target.
 
-The 2 remaining `as usize` casts in dbus.rs are inside the
+The 3 remaining `as usize` casts in dbus.rs are inside the
 unread_count_to_u32_* test module and operate on u32::MAX literals
 for arithmetic — those are obvious-from-context and stay.
 
@@ -461,7 +461,7 @@ gh pr create --base main --head chore/cleanup-40-42 \
 Bundles two micro-cleanup items from epic #29 into one PR — closes the polish-pass slate down to just **#34** (the breaking-internal `mac-notifications-*` rename, queued as the final standalone PR + v0.4.0 release).
 
 - **#42** — Standardized on inlined-format-args (`{var}`) for every `log::*` / `format!` / `eprintln!` / `println!` call. 38 of 39 sites used the legacy positional `{}` form; one in `waybar.rs` used the interpolated form. Ran `cargo clippy --fix --all-targets -- -W clippy::uninlined_format_args` to do the 15-site sweep mechanically. Added a one-paragraph comment above the first `_ => log::warn!("Unknown D-Bus method: {method}")` arm in `handle_method` explaining the daemon-side `warn` vs CLI-side `error` policy split (same wire-level condition, different side, different severity — daemon is logging a misbehaving client, CLI is reporting an actionable user-facing failure).
-- **#40** — Replaced 12 `as` casts with `try_from` / `From` at the non-trivial sites: 5 in `main.rs`'s `--update` push dispatch (each `expect`'d as "validated by clap range parser"), 1 in `ui/panel.rs::hide_panel` (lossless `u32→u64` via `u64::from`), 4 in `ui/popup.rs` (layout-math + monitor-index, each `expect`'d with the bound), 2 in `dbus.rs::handle_nwg_count_method`'s `SetMax*` lambdas (`From<u32> for usize` isn't in std because of 16-bit targets, so `try_from`). The 2 `as usize` casts in the `unread_count_to_u32_*` test module operate on `u32::MAX` literals and stay.
+- **#40** — Replaced 12 `as` casts with `try_from` / `From` at the non-trivial sites: 5 in `main.rs`'s `--update` push dispatch (each `expect`'d as "validated by clap range parser"), 1 in `ui/panel.rs::hide_panel` (lossless `u32→u64` via `u64::from`), 4 in `ui/popup.rs` (layout-math + monitor-index, each `expect`'d with the bound), 2 in `dbus.rs::handle_nwg_count_method`'s `SetMax*` lambdas (`From<u32> for usize` isn't in std because of 16-bit targets, so `try_from`). The 3 `as usize` casts in the `unread_count_to_u32_*` test module operate on `u32::MAX` literals and stay.
 
 One commit per issue. No CHANGELOG entry — internal cleanup with zero user-visible impact.
 
