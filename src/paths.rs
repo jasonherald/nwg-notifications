@@ -48,6 +48,66 @@ pub(crate) fn history_path() -> PathBuf {
     fallback_user_dir().join("nwg-notifications-history.json")
 }
 
+/// Filename of the legacy v0.3.x history JSON. Used only by
+/// [`migrate_history_if_needed`] for the one-time upgrade migration
+/// — the daemon never writes here at runtime.
+const LEGACY_HISTORY_FILENAME: &str = "mac-notifications-history.json";
+
+/// One-time migration: if the new history path doesn't exist and
+/// the legacy v0.3.x path *does* exist in the same directory, copy
+/// the legacy file's contents to the new path and unlink the old
+/// file. Returns `Some(new_path)` if a migration happened, `None`
+/// otherwise.
+///
+/// Idempotent: a second call after a successful migration finds the
+/// new file already present and returns `None`. Logs at info-level
+/// on a successful migration so the operator sees the one-time event
+/// in the journal; warns on partial failure (copy succeeded, unlink
+/// failed) so a stale-file accumulation is observable rather than
+/// silent.
+///
+/// Called once at startup from `activate_notifications` before
+/// `persistence::load_history`. The waybar status file is *not*
+/// migrated — it's a transient runtime artifact the daemon rewrites
+/// on every state change.
+pub(crate) fn migrate_history_if_needed() -> Option<PathBuf> {
+    let new_path = history_path();
+    if new_path.exists() {
+        return None;
+    }
+    // Construct the legacy path inside the same parent directory the
+    // new path lives in. fallback_user_dir resolution rules apply
+    // identically so the legacy file is in the same XDG-resolved
+    // location the new file would be.
+    let parent = new_path.parent()?;
+    let legacy_path = parent.join(LEGACY_HISTORY_FILENAME);
+    if !legacy_path.exists() {
+        return None;
+    }
+    if let Err(e) = std::fs::copy(&legacy_path, &new_path) {
+        log::warn!(
+            "Failed to migrate legacy history file {} -> {}: {}",
+            legacy_path.display(),
+            new_path.display(),
+            e
+        );
+        return None;
+    }
+    log::info!(
+        "Migrated legacy history file {} -> {}",
+        legacy_path.display(),
+        new_path.display()
+    );
+    if let Err(e) = std::fs::remove_file(&legacy_path) {
+        log::warn!(
+            "Migrated history file but failed to unlink legacy {}: {}",
+            legacy_path.display(),
+            e
+        );
+    }
+    Some(new_path)
+}
+
 /// Returns the path to the waybar status JSON file.
 /// Prefers `$XDG_RUNTIME_DIR`; falls back to `cache_dir()` and
 /// finally to a per-UID sandbox under `/tmp` if neither resolves.
@@ -365,6 +425,64 @@ mod tests {
         );
 
         // Cleanup.
+        let _ = std::fs::remove_dir_all(&tmpdir);
+    }
+
+    #[test]
+    fn migrate_history_if_needed_copies_and_unlinks_legacy_file() {
+        // Build a controlled XDG_CACHE_HOME pointing at a fresh
+        // tempdir, pre-create the legacy history file there with
+        // distinctive contents, then call migrate_history_if_needed
+        // and assert (a) the new file exists with the same contents,
+        // (b) the legacy file was unlinked, (c) a second call is a
+        // no-op (idempotency).
+        let tmpdir =
+            std::env::temp_dir().join(format!("nwg-paths-migration-test-{}", std::process::id()));
+        // Clean any leftover from a previous failed run.
+        let _ = std::fs::remove_dir_all(&tmpdir);
+        std::fs::create_dir_all(&tmpdir).expect("setup tmpdir");
+        let cache = tmpdir.join("cache");
+        std::fs::create_dir_all(&cache).expect("setup cache");
+        let legacy = cache.join("mac-notifications-history.json");
+        let new = cache.join("nwg-notifications-history.json");
+        let payload = b"[{\"id\":1,\"summary\":\"legacy\"}]";
+        std::fs::write(&legacy, payload).expect("seed legacy file");
+
+        let result = with_env(
+            &[("XDG_CACHE_HOME", Some(cache.to_str().unwrap()))],
+            migrate_history_if_needed,
+        );
+
+        assert_eq!(
+            result,
+            Some(new.clone()),
+            "migrate should report the new path on success"
+        );
+        assert!(
+            new.exists(),
+            "new history file should exist after migration"
+        );
+        assert!(
+            !legacy.exists(),
+            "legacy history file should be unlinked after migration"
+        );
+        let migrated = std::fs::read(&new).expect("read migrated file");
+        assert_eq!(
+            migrated.as_slice(),
+            payload,
+            "migrated file should have the same contents as the legacy one"
+        );
+
+        // Idempotency: second call is a no-op.
+        let result_again = with_env(
+            &[("XDG_CACHE_HOME", Some(cache.to_str().unwrap()))],
+            migrate_history_if_needed,
+        );
+        assert_eq!(
+            result_again, None,
+            "second call should be a no-op (new file already present)"
+        );
+
         let _ = std::fs::remove_dir_all(&tmpdir);
     }
 }

@@ -190,6 +190,10 @@ fn activate_notifications(
     let initial_dnd = config.borrow().dnd;
     state.borrow_mut().set_dnd(initial_dnd, None);
 
+    // One-time v0.3.x -> v0.4.0 history migration. Idempotent on
+    // every subsequent startup once the migration has run.
+    paths::migrate_history_if_needed();
+
     // Load persisted history
     let history_path = paths::history_path();
     if config.borrow().persist {
