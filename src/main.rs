@@ -81,11 +81,26 @@ fn main() {
                         .to_string();
                     dbus::push_popup_position(&raw)
                 }
-                "popup_width" => dbus::push_popup_width(config.popup_width as u32),
-                "panel_width" => dbus::push_panel_width(config.panel_width as u32),
-                "popup_timeout" => dbus::push_popup_timeout(config.popup_timeout as u32),
-                "max_popups" => dbus::push_max_popups(config.max_popups as u32),
-                "max_history" => dbus::push_max_history(config.max_history as u32),
+                "popup_width" => dbus::push_popup_width(
+                    u32::try_from(config.popup_width)
+                        .expect("popup-width validated by clap range parser"),
+                ),
+                "panel_width" => dbus::push_panel_width(
+                    u32::try_from(config.panel_width)
+                        .expect("panel-width validated by clap range parser"),
+                ),
+                "popup_timeout" => dbus::push_popup_timeout(
+                    u32::try_from(config.popup_timeout)
+                        .expect("popup-timeout validated by clap range parser"),
+                ),
+                "max_popups" => dbus::push_max_popups(
+                    u32::try_from(config.max_popups)
+                        .expect("max-popups validated by clap range parser"),
+                ),
+                "max_history" => dbus::push_max_history(
+                    u32::try_from(config.max_history)
+                        .expect("max-history validated by clap range parser"),
+                ),
                 _ => unreachable!("user_set_live_args returns only known names"),
             };
             if let Err(e) = push_result {

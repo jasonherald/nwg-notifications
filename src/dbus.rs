@@ -368,7 +368,8 @@ fn handle_nwg_count_method(
                 if raw == 0 {
                     return Err("max-popups must be >= 1".to_string());
                 }
-                cfg.max_popups = raw as usize;
+                cfg.max_popups =
+                    usize::try_from(raw).expect("u32 fits in usize on every supported target");
                 Ok(())
             },
         ),
@@ -382,7 +383,8 @@ fn handle_nwg_count_method(
                 if raw == 0 {
                     return Err("max-history must be >= 1".to_string());
                 }
-                cfg.max_history = raw as usize;
+                cfg.max_history =
+                    usize::try_from(raw).expect("u32 fits in usize on every supported target");
                 Ok(())
             },
         ),

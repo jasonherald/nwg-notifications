@@ -208,7 +208,7 @@ fn hide_panel(
     }
     let win = win.clone();
     gtk4::glib::timeout_add_local_once(
-        std::time::Duration::from_millis(PANEL_REVEAL_DURATION_MS as u64),
+        std::time::Duration::from_millis(u64::from(PANEL_REVEAL_DURATION_MS)),
         move || {
             win.set_visible(false);
         },
