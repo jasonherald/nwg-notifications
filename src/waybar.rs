@@ -12,7 +12,6 @@
 //! [Nerd Fonts]: https://www.nerdfonts.com/
 
 use serde::Serialize;
-use std::path::PathBuf;
 
 /// Offset above `SIGRTMIN` that waybar's notification module listens on.
 /// Kept as a single named constant so the implementation and its test
@@ -54,14 +53,6 @@ struct WaybarStatus {
     count: usize,
 }
 
-/// Returns the path to the waybar status file.
-fn status_path() -> PathBuf {
-    std::env::var("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"))
-        .join("mac-notifications-status.json")
-}
-
 /// Pure helper: builds the waybar status payload for the current
 /// daemon state. Split out from `update_status` so the four-way
 /// shape can be tested without going through disk I/O.
@@ -100,7 +91,7 @@ fn build_status(unread: usize, dnd: bool) -> WaybarStatus {
 pub(crate) fn update_status(unread: usize, dnd: bool) {
     let status = build_status(unread, dnd);
 
-    let path = status_path();
+    let path = crate::paths::status_path();
     match serde_json::to_string(&status) {
         Ok(json) => {
             if let Err(e) = std::fs::write(&path, json) {

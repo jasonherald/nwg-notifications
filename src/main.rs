@@ -7,6 +7,7 @@ mod config;
 mod dbus;
 mod listeners;
 mod notification;
+mod paths;
 mod persistence;
 mod state;
 mod ui;
@@ -169,10 +170,15 @@ fn activate_notifications(
         app_dirs,
         Rc::clone(config),
     )));
-    state.borrow_mut().dnd = config.borrow().dnd;
+    // Initialize DND from CLI flag. Routes through set_dnd so the
+    // (dnd, dnd_expires) write stays atomic now that the fields
+    // are private; the helper's log line at startup is harmless and
+    // confirms in the journal whether the user passed --dnd.
+    let initial_dnd = config.borrow().dnd;
+    state.borrow_mut().set_dnd(initial_dnd, None);
 
     // Load persisted history
-    let history_path = persistence::history_path();
+    let history_path = paths::history_path();
     if config.borrow().persist {
         let loaded = persistence::load_history(&history_path);
         if !loaded.is_empty() {
@@ -189,7 +195,7 @@ fn activate_notifications(
 
     // Write initial waybar status
     let s = state.borrow();
-    waybar::update_status(s.unread_count(), s.dnd);
+    waybar::update_status(s.unread_count(), s.is_dnd_enabled());
     drop(s);
 
     // Shared callback for any state change -> save history + update waybar
@@ -274,7 +280,7 @@ fn build_state_change_callback(
         let s = state_sync.borrow();
         let unread = s.unread_count();
         let count = dbus::unread_count_to_u32(unread);
-        waybar::update_status(unread, s.dnd);
+        waybar::update_status(unread, s.is_dnd_enabled());
         if persist {
             persistence::save_history(&history_path, &s.history);
         }

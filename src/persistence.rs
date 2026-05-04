@@ -4,14 +4,7 @@
 //! and corrupt files by returning an empty history.
 
 use crate::notification::Notification;
-use std::path::{Path, PathBuf};
-
-/// Returns the path to the notification history file.
-pub(crate) fn history_path() -> PathBuf {
-    nwg_common::config::paths::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("mac-notifications-history.json")
-}
+use std::path::Path;
 
 /// Loads notification history from disk.
 pub(crate) fn load_history(path: &Path) -> Vec<Notification> {
