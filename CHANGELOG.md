@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.1] — Unreleased
 
+### Changed
+
+- Bumped `nwg-common` dependency from `0.4` to `0.5`. No public-API
+  impact for `nwg-notifications`: the only addition in `nwg-common 0.5.0`
+  is the rebindable CSS watcher (`watch_css_rebindable` /
+  `CssWatchHandle` / `CssRebindError`) used by `nwg-dock`'s newly-
+  configurable `css-file` path; we still use the non-rebindable
+  `watch_css` for our embedded-default CSS hot-reload, which is
+  unchanged. Pulled in to stay current with the nwg-* family.
+
 ## [0.4.0] — 2026-05-04
 
 ### Changed
