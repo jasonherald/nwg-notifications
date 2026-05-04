@@ -817,71 +817,51 @@ Tell the user (verbatim or close):
 > the PR**:
 >
 > **1. History migration:**
->    - Check whether `~/.cache/mac-notifications-history.json` (or
->      wherever `XDG_CACHE_HOME` points) used to exist with your
->      pre-upgrade history. If it did, the daemon should have
->      migrated it on startup — verify that the new file
->      `~/.cache/nwg-notifications-history.json` exists with the
->      same contents and the legacy one is gone.
->    - `journalctl --user -u mac-doc-hyprland.service --since '5 minutes ago'`
->      (or wherever the daemon's stdout goes) should show
->      `Migrated legacy history file ... -> ...` if the migration ran.
->    - Open the panel via `kill -RTMIN+4 $(pidof nwg-notifications)`
->      — your old history should appear.
+>
+> - Check whether `~/.cache/mac-notifications-history.json` (or wherever `XDG_CACHE_HOME` points) used to exist with your pre-upgrade history. If it did, the daemon should have migrated it on startup — verify that the new file `~/.cache/nwg-notifications-history.json` exists with the same contents and the legacy one is gone.
+> - `journalctl --user -u mac-doc-hyprland.service --since '5 minutes ago'` (or wherever the daemon's stdout goes) should show `Migrated legacy history file ... -> ...` if the migration ran.
+> - Open the panel via `kill -RTMIN+4 $(pidof nwg-notifications)` — your old history should appear.
 >
 > **2. Waybar status file:**
->    - `notify-send "smoke" "test after rename"` to generate a state change.
->    - `ls -la "$XDG_RUNTIME_DIR"/nwg-notifications-status.json` should
->      show a file that exists and was just written.
->    - The legacy `$XDG_RUNTIME_DIR/mac-notifications-status.json` is
->      not migrated (it's a transient artifact); it'll go stale until
->      manually deleted. That's expected.
->    - Your waybar config still references the old path — **expect
->      the bell module to show empty / stale until you update the
->      waybar config to the new filename**. This is the breaking
->      change the CHANGELOG warns about. (Update your waybar config
->      to match the new path + reload waybar to confirm the bell
->      starts updating again.)
+>
+> - `notify-send "smoke" "test after rename"` to generate a state change.
+> - `ls -la "$XDG_RUNTIME_DIR"/nwg-notifications-status.json` should show a file that exists and was just written.
+> - The legacy `$XDG_RUNTIME_DIR/mac-notifications-status.json` is not migrated (it's a transient artifact); it'll go stale until manually deleted. That's expected.
+> - Your waybar config still references the old path — **expect the bell module to show empty / stale until you update the waybar config to the new filename**. This is the breaking change the CHANGELOG warns about. (Update your waybar config to match the new path + reload waybar to confirm the bell starts updating again.)
 >
 > **3. Singleton dual-check (the trickiest one):**
->    - This is hard to smoke-test post-hoc because the upgrade
->      already replaced the running daemon. To exercise it: stop
->      the new daemon, then synthesize a fake legacy lockfile, then
->      try to start the new daemon. It should refuse:
->      ```bash
->      kill $(pidof nwg-notifications) 2>/dev/null || true
->      sleep 1
->      # Synthesize a fake v0.3.x lock holding our own shell's PID
->      # (so it looks alive). The user-hash filename pattern matches
->      # what nwg_common::singleton expects.
->      USER_HASH=$(printf "%s" "$USER" | cksum | awk '{print $1}')
->      LEGACY_LOCK="/tmp/mac-notifications-${USER_HASH}.lock"
->      echo $$ > "$LEGACY_LOCK"
->      # Try to start the new daemon — should refuse with an error
->      # message naming the fake PID:
->      nwg-notifications --persist 2>&1 | head -5
->      # Cleanup:
->      rm -f "$LEGACY_LOCK"
->      ```
->    - Expected output: `nwg-notifications: a legacy v0.3.x instance is already running (pid <your-shell-pid>, under the old singleton-lock name 'mac-notifications').` followed by `Stop it first:  kill <your-shell-pid>`. Daemon exits 0 without claiming the new lock.
->    - **This synthetic test depends on `nwg_common`'s
->      user-hash function matching `cksum` — it might not. If
->      the synthetic lock doesn't trigger the dual-check (i.e. the
->      daemon starts normally), don't worry — that's a test-rig
->      issue, not a bug in the dual-check itself. Reply with the
->      output and I'll investigate.**
->    - Then `nwg-notifications --persist &` to start the new
->      daemon for real and confirm the rest of the daemon still
->      works.
+>
+> This is hard to smoke-test post-hoc because the upgrade already replaced the running daemon. To exercise it: stop the new daemon, then synthesize a fake legacy lockfile, then try to start the new daemon. It should refuse:
+>
+> ```bash
+> kill $(pidof nwg-notifications) 2>/dev/null || true
+> sleep 1
+> # Synthesize a fake v0.3.x lock holding our own shell's PID
+> # (so it looks alive). The user-hash filename pattern matches
+> # what nwg_common::singleton expects.
+> USER_HASH=$(printf "%s" "$USER" | cksum | awk '{print $1}')
+> LEGACY_LOCK="/tmp/mac-notifications-${USER_HASH}.lock"
+> echo $$ > "$LEGACY_LOCK"
+> # Try to start the new daemon — should refuse with an error
+> # message naming the fake PID:
+> nwg-notifications --persist 2>&1 | head -5
+> # Cleanup:
+> rm -f "$LEGACY_LOCK"
+> ```
+>
+> Expected output: `nwg-notifications: a legacy v0.3.x instance is already running (pid <your-shell-pid>, under the old singleton-lock name 'mac-notifications').` followed by `Stop it first: kill <your-shell-pid>`. Daemon exits 0 without claiming the new lock.
+>
+> **This synthetic test depends on `nwg_common`'s user-hash function matching `cksum` — it might not.** If the synthetic lock doesn't trigger the dual-check (i.e. the daemon starts normally), don't worry — that's a test-rig issue, not a bug in the dual-check itself. Reply with the output and I'll investigate.
+>
+> Then `nwg-notifications --persist &` to start the new daemon for real and confirm the rest of the daemon still works.
 >
 > **4. End-to-end smoke (with the new daemon running):**
->    - `notify-send "final" "smoke check"` — popup appears.
->    - Open the panel, see the popup in history.
->    - Right-click the waybar bell → DND menu opens.
 >
-> Reply with what worked and what didn't. **Do not let me open
-> the PR until you've had a chance to verify the migration on
-> your live system.**
+> - `notify-send "final" "smoke check"` — popup appears.
+> - Open the panel, see the popup in history.
+> - Right-click the waybar bell → DND menu opens.
+>
+> Reply with what worked and what didn't. **Do not let me open the PR until you've had a chance to verify the migration on your live system.**
 
 **Do not proceed to Task 8 until the user explicitly approves the smoke results.** If anything fails, return to the broken task — the migration helper, the dual-check, or the path renames are the most likely places to need a fix.
 
@@ -905,7 +885,9 @@ git push -u origin release/0.4.0-rename
 
 - [ ] **Step 1: Open the PR**
 
-```bash
+The outer fence below uses **four backticks** so the inner three-backtick `bash` block in the post-merge instructions doesn't terminate the outer fence prematurely (markdownlint MD040/MD031 flag the collision otherwise).
+
+````bash
 gh pr create --base main --head release/0.4.0-rename \
   --title "release: 0.4.0 — rename runtime artifacts to nwg-notifications-* (#34)" \
   --body "$(cat <<'EOF'
@@ -945,7 +927,7 @@ gh release create v0.4.0 --title "v0.4.0" --notes "$(... see CHANGELOG ...)"
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
-```
+````
 
 - [ ] **Step 2: Wait for CodeRabbit + iterate**
 
