@@ -48,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `watch_css` for our embedded-default CSS hot-reload, which is
   unchanged. Pulled in to stay current with the nwg-* family.
 
+- Centralized the config-field-name registry into three nested const
+  slices in `config.rs`: `OVERRIDABLE_FIELDS` (10 — boot-time merge
+  inputs), `RELOADABLE_FIELDS` (8 — JSON-visible hot-reload inputs),
+  `LIVE_UPDATABLE_ARGS` (6 — `--update` and D-Bus `Set*` settable).
+  `merge_cli_over_json` and `apply_config_reload` now iterate over
+  the registry and dispatch through a shared `copy_overridable_field`
+  helper instead of hardcoding the same field-name strings in three
+  places. A `field_registry_subsets_are_consistent` test asserts the
+  ⊂ relationships, and `overridable_fields_match_clap_arg_set`
+  catches drift between the registry and `NotificationConfig`'s
+  clap-derived arg set ([#68](https://github.com/jasonherald/nwg-notifications/issues/68)).
+  No behavior change.
+
 ### Fixed
 
 - `nwg-notifications --update --<flag> <value>` now auto-activates the
