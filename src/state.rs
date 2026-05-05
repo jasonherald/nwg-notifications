@@ -44,6 +44,12 @@ pub(crate) struct NotificationState {
     pub(crate) config: Rc<RefCell<NotificationConfig>>,
     /// D-Bus connection for emitting ActionInvoked signals.
     pub(crate) dbus_connection: Option<gio::DBusConnection>,
+    /// Field names of D-Bus Set* calls made in this session. Used
+    /// by the config-file watcher to know which fields to *not*
+    /// overwrite from the JSON on hot-reload — Set* values are
+    /// "sticky" for the session per spec, until daemon restart.
+    /// In-memory only (not persisted).
+    pub(crate) dbus_overrides: std::collections::HashSet<&'static str>,
 }
 
 impl NotificationState {
@@ -57,6 +63,7 @@ impl NotificationState {
             active_popups: HashSet::new(),
             config,
             dbus_connection: None,
+            dbus_overrides: std::collections::HashSet::new(),
         }
     }
 
@@ -154,6 +161,14 @@ impl NotificationState {
         // the (dnd, dnd_expires) drift this helper exists to prevent.
         self.dnd_expires = if enabled { expires } else { None };
         log::info!("DND {}", if enabled { "enabled" } else { "disabled" });
+    }
+
+    /// Marks `field_name` as overridden by a D-Bus Set* call this
+    /// session. The hot-reload watcher in `config_file.rs` checks
+    /// this set before applying a JSON value, so per-spec sticky
+    /// Set* semantics hold until the daemon restarts.
+    pub(crate) fn mark_dbus_override(&mut self, field_name: &'static str) {
+        self.dbus_overrides.insert(field_name);
     }
 
     /// Marks a notification as read.
@@ -455,6 +470,20 @@ mod tests {
         assert_eq!(state.history[0].summary, "third");
         assert_eq!(state.history[1].summary, "second");
         assert_eq!(state.history[2].summary, "first");
+    }
+
+    #[test]
+    fn mark_dbus_override_records_field_name() {
+        let mut state = NotificationState::new(vec![], test_config_with_max_history(100));
+        assert!(state.dbus_overrides.is_empty());
+
+        state.mark_dbus_override("popup_width");
+        state.mark_dbus_override("max_popups");
+
+        assert!(state.dbus_overrides.contains("popup_width"));
+        assert!(state.dbus_overrides.contains("max_popups"));
+        assert!(!state.dbus_overrides.contains("max_history"));
+        assert_eq!(state.dbus_overrides.len(), 2);
     }
 
     #[test]

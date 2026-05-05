@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cargo install` users need to create the second file manually —
   see the README's `D-Bus service` section for the template.
 
+- JSON config file at `~/.config/nwg-notifications/config.json`
+  (#64). Loaded at startup with merge precedence
+  `defaults < config.json < CLI flags < D-Bus Set*`. First-run
+  writes defaults so the file is hand-editable. Inotify-based
+  hot-reload picks up edits without daemon restart. `Set*` D-Bus
+  calls (the nwg-shell-config push path) persist back to the
+  JSON via atomic write, so live updates survive daemon
+  restarts. See README's `Configuration` section for the schema.
+
 ### Changed
 
 - Bumped `nwg-common` dependency from `0.4` to `0.5`. No public-API

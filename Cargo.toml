@@ -1,6 +1,6 @@
 [package]
 name = "nwg-notifications"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -16,7 +16,15 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared library (library + binaries all on the 0.5.x line)
-nwg-common = "0.5"
+nwg-common = "0.5.1"
+
+# Atomic file writes for the JSON config (NamedTempFile + persist
+# = same-fs tempfile + rename(2), the canonical POSIX atomic write).
+tempfile = "3"
+
+# Inotify-based config-file watcher for hot-reload. notify = "8"
+# to match nwg-common's pin (cargo MVS dedupes).
+notify = "8"
 
 # GTK4 + Wayland layer shell. `gtk4::gio` provides the D-Bus server
 # plumbing (bus_own_name, BusType::Session, DBusConnection); no

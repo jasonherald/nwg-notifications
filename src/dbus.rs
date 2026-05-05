@@ -300,14 +300,16 @@ fn handle_nwg_count_method(
             invocation.return_value(Some(&result));
         }
         "SetPopupPosition" => {
-            handle_set_popup_position(params, invocation, config, on_state_change)
+            handle_set_popup_position(params, invocation, state, config, on_state_change)
         }
         "SetPopupWidth" => handle_set_u32(
             params,
             invocation,
+            state,
             config,
             on_state_change,
             "SetPopupWidth",
+            "popup_width",
             |raw, cfg| {
                 let v = i32::try_from(raw)
                     .map_err(|_| format!("popup-width {raw} exceeds i32::MAX"))?;
@@ -327,9 +329,11 @@ fn handle_nwg_count_method(
         "SetPanelWidth" => handle_set_u32(
             params,
             invocation,
+            state,
             config,
             on_state_change,
             "SetPanelWidth",
+            "panel_width",
             |raw, cfg| {
                 let v = i32::try_from(raw)
                     .map_err(|_| format!("panel-width {raw} exceeds i32::MAX"))?;
@@ -349,9 +353,11 @@ fn handle_nwg_count_method(
         "SetPopupTimeout" => handle_set_u32(
             params,
             invocation,
+            state,
             config,
             on_state_change,
             "SetPopupTimeout",
+            "popup_timeout",
             |raw, cfg| {
                 // 0 is a valid value (means "never auto-dismiss").
                 cfg.popup_timeout = u64::from(raw);
@@ -361,9 +367,11 @@ fn handle_nwg_count_method(
         "SetMaxPopups" => handle_set_u32(
             params,
             invocation,
+            state,
             config,
             on_state_change,
             "SetMaxPopups",
+            "max_popups",
             |raw, cfg| {
                 if raw == 0 {
                     return Err("max-popups must be >= 1".to_string());
@@ -376,9 +384,11 @@ fn handle_nwg_count_method(
         "SetMaxHistory" => handle_set_u32(
             params,
             invocation,
+            state,
             config,
             on_state_change,
             "SetMaxHistory",
+            "max_history",
             |raw, cfg| {
                 if raw == 0 {
                     return Err("max-history must be >= 1".to_string());
@@ -406,19 +416,26 @@ fn return_invalid_args(invocation: gio::DBusMethodInvocation, msg: &str) {
 /// `org.nwg.Notifications`. Decodes the first param as `u32`, hands
 /// it to the `apply` closure (which validates and writes into
 /// `NotificationConfig`), and bridges the result back to the D-Bus
-/// invocation: `Ok(())` returns success and fires `on_state_change`,
+/// invocation: `Ok(())` marks the override, persists the config,
+/// returns success and fires `on_state_change`;
 /// `Err(msg)` returns `org.freedesktop.DBus.Error.InvalidArgs` with
 /// the supplied message.
 ///
 /// `method_name` is used only for the wrong-type error message
 /// (e.g. `"SetMaxPopups expects a uint32 argument"`); pass the bare
 /// D-Bus method name without quoting.
+///
+/// `field_name` is the snake_case config field name recorded in
+/// `dbus_overrides` so the hot-reload watcher knows to skip it.
+#[allow(clippy::too_many_arguments)]
 fn handle_set_u32(
     params: &glib::Variant,
     invocation: gio::DBusMethodInvocation,
+    state: &Rc<RefCell<NotificationState>>,
     config: &Rc<RefCell<NotificationConfig>>,
     on_state_change: &Rc<dyn Fn()>,
     method_name: &str,
+    field_name: &'static str,
     apply: impl FnOnce(u32, &mut NotificationConfig) -> Result<(), String>,
 ) {
     let raw: u32 = match params.child_value(0).get() {
@@ -437,6 +454,8 @@ fn handle_set_u32(
     };
     match result {
         Ok(()) => {
+            state.borrow_mut().mark_dbus_override(field_name);
+            persist_config(field_name, &config.borrow());
             invocation.return_value(None);
             on_state_change();
         }
@@ -447,6 +466,7 @@ fn handle_set_u32(
 fn handle_set_popup_position(
     params: &glib::Variant,
     invocation: gio::DBusMethodInvocation,
+    state: &Rc<RefCell<NotificationState>>,
     config: &Rc<RefCell<NotificationConfig>>,
     on_state_change: &Rc<dyn Fn()>,
 ) {
@@ -461,6 +481,8 @@ fn handle_set_popup_position(
     match crate::config::PopupPosition::from_str(&raw, true) {
         Ok(pos) => {
             config.borrow_mut().popup_position = pos;
+            state.borrow_mut().mark_dbus_override("popup_position");
+            persist_config("popup_position", &config.borrow());
             invocation.return_value(None);
             on_state_change();
         }
@@ -825,6 +847,53 @@ fn extract_urgency(hints: &glib::Variant) -> Urgency {
     extract_hint::<u8>(hints, "urgency")
         .map(Urgency::from)
         .unwrap_or(Urgency::Normal)
+}
+
+/// Atomically writes the just-changed field to the JSON file by
+/// loading the current on-disk values, overlaying only `field_name`
+/// from the runtime config, and saving the result. This avoids
+/// leaking CLI-only session overrides (e.g., `--persist`, `--dnd`)
+/// into the file: those fields belong in the JSON schema, but a
+/// user passing `--dnd` for one diagnostic run shouldn't have that
+/// state baked into config.json forever just because they later
+/// pushed an unrelated `SetMaxPopups`.
+///
+/// On a malformed on-disk file we log + skip the write rather than
+/// clobber the user's mid-edit content. On `NotFound` we start from
+/// `NotificationConfig::default()` (first-run write where Set* is
+/// the very first persistence event). Logs (warn-level) on save
+/// failure but doesn't propagate the error — the in-memory
+/// mutation already succeeded, so persistence is best-effort.
+fn persist_config(field_name: &str, runtime: &crate::config::NotificationConfig) {
+    let path = crate::paths::config_path();
+    let mut to_save = match crate::config_file::load(&path) {
+        Ok(c) => c,
+        Err(crate::config_file::ConfigFileError::NotFound) => {
+            crate::config::NotificationConfig::default()
+        }
+        Err(e) => {
+            log::warn!(
+                "Cannot persist Set* update because config at {} is unreadable: {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    match field_name {
+        "popup_position" => to_save.popup_position = runtime.popup_position,
+        "popup_timeout" => to_save.popup_timeout = runtime.popup_timeout,
+        "popup_width" => to_save.popup_width = runtime.popup_width,
+        "panel_width" => to_save.panel_width = runtime.panel_width,
+        "max_popups" => to_save.max_popups = runtime.max_popups,
+        "max_history" => to_save.max_history = runtime.max_history,
+        _ => {
+            log::warn!("persist_config called with unknown field: {field_name}; refusing to write");
+            return;
+        }
+    }
+    if let Err(e) = crate::config_file::save(&path, &to_save) {
+        log::warn!("Failed to persist Set* update to {}: {e}", path.display());
+    }
 }
 
 #[cfg(test)]

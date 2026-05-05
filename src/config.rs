@@ -10,7 +10,8 @@ use crate::ui::constants::{
 use clap::{Parser, ValueEnum};
 
 /// Popup display position.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum PopupPosition {
     TopRight,
     TopCenter,
@@ -21,9 +22,17 @@ pub(crate) enum PopupPosition {
 }
 
 /// A macOS-style notification daemon for Hyprland/Sway.
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[command(name = "nwg-notifications", version, about)]
+#[serde(default)]
 pub(crate) struct NotificationConfig {
+    /// Schema version for forward-compatibility. Set to `1` for the
+    /// initial JSON format. Not exposed as a CLI flag (the value is
+    /// only meaningful on the JSON side).
+    #[arg(skip)]
+    #[serde(default = "default_config_version")]
+    pub(crate) version: u32,
+
     /// Popup display position
     #[arg(long, value_enum, default_value_t = PopupPosition::TopRight)]
     pub(crate) popup_position: PopupPosition,
@@ -70,15 +79,18 @@ pub(crate) struct NotificationConfig {
 
     /// Turn on debug messages
     #[arg(long)]
+    #[serde(skip)]
     pub(crate) debug: bool,
 
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
+    #[serde(skip)]
     pub(crate) wm: Option<nwg_common::compositor::WmOverride>,
 
     /// Print the current pending notification count and exit.
     /// Queries the running daemon over D-Bus; does not auto-start one if none is running.
     #[arg(long)]
+    #[serde(skip)]
     pub(crate) count: bool,
 
     /// Push the values of any *also-passed* flags to the running daemon
@@ -89,7 +101,40 @@ pub(crate) struct NotificationConfig {
     /// startup-only flags (--persist, --wm, --debug) are silently ignored
     /// in this mode.
     #[arg(long)]
+    #[serde(skip)]
     pub(crate) update: bool,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        // Match clap's `default_value_t` annotations exactly. The
+        // serde-deserialized "missing field" path uses these; the
+        // CLI-parsed path uses clap's defaults. Both agree.
+        Self {
+            version: default_config_version(),
+            popup_position: PopupPosition::TopRight,
+            popup_timeout: 7000,
+            popup_width: POPUP_WIDTH_DEFAULT,
+            panel_width: PANEL_WIDTH_DEFAULT,
+            max_popups: 5,
+            max_history: 200,
+            persist: false,
+            dnd: false,
+            debug: false,
+            wm: None,
+            count: false,
+            update: false,
+        }
+    }
+}
+
+/// Default schema version when serde encounters a JSON file
+/// without a `"version"` field. Treat as version 1 (the initial
+/// schema). Single source of truth for the version constant —
+/// `Default for NotificationConfig` reuses this so the serde-default
+/// path and the first-run-write path agree by construction.
+const fn default_config_version() -> u32 {
+    1
 }
 
 /// The set of clap arg IDs that are inherently live-updatable. Flags
@@ -121,6 +166,39 @@ pub(crate) fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str
         })
         .copied()
         .collect()
+}
+
+/// Returns the names of every CLI flag the user explicitly passed
+/// on the command line (as opposed to clap's compiled defaults
+/// kicking in). Used by the boot-time merge in main() to decide
+/// which fields override the JSON config and which fall through to
+/// it.
+///
+/// Distinct from `user_set_live_args` (which covers only the
+/// `--update`-eligible subset for D-Bus push). This one is
+/// boot-only and includes flags that aren't pushable at runtime
+/// (e.g. `--debug`, `--wm`).
+pub(crate) fn user_set_args(matches: &clap::ArgMatches) -> std::collections::HashSet<&'static str> {
+    use clap::parser::ValueSource;
+    let mut out = std::collections::HashSet::new();
+    let candidates = [
+        "popup_position",
+        "popup_timeout",
+        "popup_width",
+        "panel_width",
+        "max_popups",
+        "max_history",
+        "persist",
+        "dnd",
+        "debug",
+        "wm",
+    ];
+    for name in candidates {
+        if matches.value_source(name) == Some(ValueSource::CommandLine) {
+            out.insert(name);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -353,6 +431,74 @@ mod tests {
         assert!(
             result.is_err(),
             "expected --panel-width={above} to be rejected"
+        );
+    }
+
+    #[test]
+    fn empty_json_produces_struct_with_clap_defaults() {
+        // serde(default) on the struct + Default impl that mirrors
+        // clap's default_value_t means an empty JSON object should
+        // produce a NotificationConfig identical to one parsed from
+        // an empty CLI invocation.
+        let from_json: NotificationConfig = serde_json::from_str("{}").expect("empty JSON parses");
+        let from_cli = NotificationConfig::parse_from(["test"]);
+
+        assert_eq!(from_json.popup_position, from_cli.popup_position);
+        assert_eq!(from_json.popup_timeout, from_cli.popup_timeout);
+        assert_eq!(from_json.popup_width, from_cli.popup_width);
+        assert_eq!(from_json.panel_width, from_cli.panel_width);
+        assert_eq!(from_json.max_popups, from_cli.max_popups);
+        assert_eq!(from_json.max_history, from_cli.max_history);
+        assert_eq!(from_json.persist, from_cli.persist);
+        assert_eq!(from_json.dnd, from_cli.dnd);
+    }
+
+    #[test]
+    fn popup_position_serializes_as_kebab_case() {
+        // Matches the strings clap's ValueEnum accepts on the CLI
+        // (e.g. `--popup-position top-right`).
+        assert_eq!(
+            serde_json::to_string(&PopupPosition::TopRight).unwrap(),
+            "\"top-right\""
+        );
+        let parsed: PopupPosition = serde_json::from_str("\"bottom-center\"").unwrap();
+        assert_eq!(parsed, PopupPosition::BottomCenter);
+    }
+
+    #[test]
+    fn empty_json_defaults_version_to_1() {
+        // serde(default = "default_config_version") on the version
+        // field means a JSON without it (e.g., old v0.4.0 files
+        // written before the field existed) parses as version 1.
+        let config: NotificationConfig = serde_json::from_str("{}").expect("empty JSON parses");
+        assert_eq!(config.version, 1);
+    }
+
+    #[test]
+    fn cli_only_fields_are_skipped_in_json() {
+        // debug / wm / count / update should serialize to nothing
+        // (the JSON should not have keys for them).
+        let config = NotificationConfig {
+            debug: true,
+            count: true,
+            ..NotificationConfig::default()
+        };
+        let json = serde_json::to_string(&config).expect("serialize");
+        assert!(
+            !json.contains("debug"),
+            "debug must not appear in JSON; got: {json}"
+        );
+        assert!(
+            !json.contains("\"wm\""),
+            "wm must not appear in JSON; got: {json}"
+        );
+        assert!(
+            !json.contains("count"),
+            "count must not appear in JSON; got: {json}"
+        );
+        assert!(
+            !json.contains("update"),
+            "update must not appear in JSON; got: {json}"
         );
     }
 }

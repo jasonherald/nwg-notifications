@@ -4,6 +4,7 @@
 //! claiming the singleton lock.
 
 mod config;
+mod config_file;
 mod dbus;
 mod listeners;
 mod notification;
@@ -31,8 +32,16 @@ fn main() {
     // value_source filtering in --update mode (so we only push flags the
     // user actually passed, not their defaults).
     let matches = NotificationConfig::command().get_matches();
-    let config = NotificationConfig::from_arg_matches(&matches)
+    let cli_config = NotificationConfig::from_arg_matches(&matches)
         .expect("clap should produce a valid NotificationConfig from successful matches");
+
+    // Layered merge: defaults < JSON < CLI < (later: D-Bus Set*).
+    // CLI flags the user explicitly passed override the JSON; JSON
+    // fills in the rest from the file (or compiled defaults via
+    // load_or_create_default if the file doesn't exist).
+    let json_config = config_file::load_or_create_default(&paths::config_path());
+    let user_set = config::user_set_args(&matches);
+    let config = merge_cli_over_json(json_config, cli_config, &user_set);
 
     // Initialize logging before any early-exit CLI mode (--count, --update) so
     // their error paths can reach log::error! per the project's "log errors"
@@ -285,6 +294,22 @@ fn activate_notifications(
         on_close,
     );
 
+    // Hot-reload config from disk. The watcher runs on a detached
+    // thread; we poll the receiver from the glib main loop and
+    // apply each reload into the live state, skipping fields that
+    // are sticky per a Set* override this session.
+    let config_watcher = config_file::start_watcher(&paths::config_path());
+    let state_reload = Rc::clone(&state);
+    let config_reload = Rc::clone(config);
+    let on_change_reload = Rc::clone(&on_state_change);
+    gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        while let Ok(new_config) = config_watcher.try_recv() {
+            apply_config_reload(&state_reload, &config_reload, &new_config);
+            on_change_reload();
+        }
+        gtk4::glib::ControlFlow::Continue
+    });
+
     // DND menu (right-click waybar bell)
     let dnd_menu = Rc::new(RefCell::new(ui::dnd_menu::DndMenu::new(
         app,
@@ -381,6 +406,89 @@ fn build_on_notify_callback(
     })
 }
 
+/// Per-field merge of CLI flags over JSON config. For each field
+/// in NotificationConfig, take the CLI value if the user
+/// explicitly passed it (`user_set` membership), else take the
+/// JSON value. The `count` and `update` fields are always taken
+/// from CLI — they're transient mode flags, not config knobs.
+fn merge_cli_over_json(
+    mut json: NotificationConfig,
+    cli: NotificationConfig,
+    user_set: &std::collections::HashSet<&'static str>,
+) -> NotificationConfig {
+    if user_set.contains("popup_position") {
+        json.popup_position = cli.popup_position;
+    }
+    if user_set.contains("popup_timeout") {
+        json.popup_timeout = cli.popup_timeout;
+    }
+    if user_set.contains("popup_width") {
+        json.popup_width = cli.popup_width;
+    }
+    if user_set.contains("panel_width") {
+        json.panel_width = cli.panel_width;
+    }
+    if user_set.contains("max_popups") {
+        json.max_popups = cli.max_popups;
+    }
+    if user_set.contains("max_history") {
+        json.max_history = cli.max_history;
+    }
+    if user_set.contains("persist") {
+        json.persist = cli.persist;
+    }
+    if user_set.contains("dnd") {
+        json.dnd = cli.dnd;
+    }
+    if user_set.contains("debug") {
+        json.debug = cli.debug;
+    }
+    if user_set.contains("wm") {
+        json.wm = cli.wm;
+    }
+    // count and update are always CLI-driven — they're transient
+    // mode flags, not config knobs.
+    json.count = cli.count;
+    json.update = cli.update;
+    json
+}
+
+/// Applies a hot-reloaded config into the live in-memory config,
+/// per-field. Skips any field whose name is in
+/// `state.dbus_overrides` (Set* sticky for the session).
+fn apply_config_reload(
+    state: &Rc<RefCell<NotificationState>>,
+    config: &Rc<RefCell<NotificationConfig>>,
+    new: &NotificationConfig,
+) {
+    let overrides = state.borrow().dbus_overrides.clone();
+    let mut cfg = config.borrow_mut();
+    if !overrides.contains("popup_position") {
+        cfg.popup_position = new.popup_position;
+    }
+    if !overrides.contains("popup_timeout") {
+        cfg.popup_timeout = new.popup_timeout;
+    }
+    if !overrides.contains("popup_width") {
+        cfg.popup_width = new.popup_width;
+    }
+    if !overrides.contains("panel_width") {
+        cfg.panel_width = new.panel_width;
+    }
+    if !overrides.contains("max_popups") {
+        cfg.max_popups = new.max_popups;
+    }
+    if !overrides.contains("max_history") {
+        cfg.max_history = new.max_history;
+    }
+    if !overrides.contains("persist") {
+        cfg.persist = new.persist;
+    }
+    if !overrides.contains("dnd") {
+        cfg.dnd = new.dnd;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,5 +504,75 @@ mod tests {
     fn count_changed_predicate_skips_when_equal() {
         assert!(!should_emit_count_changed(0, 0));
         assert!(!should_emit_count_changed(7, 7));
+    }
+
+    #[test]
+    fn merge_cli_over_json_takes_cli_for_user_set_fields_and_json_for_rest() {
+        let json = NotificationConfig {
+            popup_timeout: 9999,
+            max_popups: 99,
+            max_history: 999,
+            ..NotificationConfig::default()
+        };
+
+        let cli = NotificationConfig {
+            popup_timeout: 1, // user passed --popup-timeout 1
+            max_popups: 2,    // user passed --max-popups 2
+            // max_history not passed; cli.max_history is the default (200)
+            ..NotificationConfig::default()
+        };
+
+        let mut user_set = std::collections::HashSet::new();
+        user_set.insert("popup_timeout");
+        user_set.insert("max_popups");
+        // max_history NOT in user_set
+
+        let merged = merge_cli_over_json(json, cli, &user_set);
+
+        assert_eq!(merged.popup_timeout, 1, "user-set CLI value wins");
+        assert_eq!(merged.max_popups, 2, "user-set CLI value wins");
+        assert_eq!(
+            merged.max_history, 999,
+            "JSON value wins when CLI not user-set"
+        );
+    }
+
+    #[test]
+    fn apply_config_reload_skips_dbus_overridden_fields() {
+        // Synthesize a state with one override + a starting config,
+        // call apply_config_reload with a new config, assert only
+        // the non-overridden fields changed.
+        use crate::config::NotificationConfig;
+        use crate::state::NotificationState;
+
+        let config = Rc::new(RefCell::new(NotificationConfig::default()));
+        let state_inner =
+            NotificationState::new(vec![], Rc::new(RefCell::new(NotificationConfig::default())));
+        let state = Rc::new(RefCell::new(state_inner));
+
+        // Simulate a Set* call that overrode popup_width earlier in
+        // the session.
+        state.borrow_mut().mark_dbus_override("popup_width");
+        config.borrow_mut().popup_width = 999;
+
+        // Hot-reload: new JSON has different values for both
+        // popup_width (overridden) and max_popups (not).
+        let new_config = NotificationConfig {
+            popup_width: 500,
+            max_popups: 42,
+            ..NotificationConfig::default()
+        };
+
+        apply_config_reload(&state, &config, &new_config);
+
+        let after = config.borrow();
+        assert_eq!(
+            after.popup_width, 999,
+            "popup_width was Set*-overridden; reload must not clobber it"
+        );
+        assert_eq!(
+            after.max_popups, 42,
+            "max_popups was not overridden; reload should apply"
+        );
     }
 }
