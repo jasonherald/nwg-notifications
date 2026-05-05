@@ -96,7 +96,7 @@ Cargo-install users without a source clone should use the manual equivalent — 
 cargo install nwg-notifications
 ```
 
-This is the right path if you prefer the Rust toolchain workflow over `make install`. **Heads-up: this is a two-step install** — `cargo install` only places the binary at `~/.cargo/bin/nwg-notifications`, it doesn't create the D-Bus service file the daemon needs to be reachable. After running the command above, manually create the service file (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
+This is the right path if you prefer the Rust toolchain workflow over `make install`. **Heads-up: this is a two-step install** — `cargo install` only places the binary at `~/.cargo/bin/nwg-notifications`, it doesn't create the **two** D-Bus service files the daemon needs to be reachable on either of its bus names. After running the command above, manually create both service files (see [D-Bus service](#d-bus-service) below; both are ~5-line files pointing at the installed binary). Once both service files are in place, the daemon auto-activates the first time any app calls **either** `org.freedesktop.Notifications` (the standard notify path) or `org.nwg.Notifications` (the count IPC nwg-panel uses). One daemon owns both names.
 
 For the all-in-one experience, use the [`make install`](#make-install--recommended-one-stop-binary--d-bus-service-file) path above.
 
@@ -124,7 +124,7 @@ nwg-notifications --wm sway --persist
 
 ## D-Bus service
 
-`make install-dbus` installs this file into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create it manually:
+`make install-dbus` installs **two** service files into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create them manually:
 
 ```ini
 # ~/.local/share/dbus-1/services/org.freedesktop.Notifications.service
@@ -133,7 +133,14 @@ Name=org.freedesktop.Notifications
 Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
 ```
 
-Once registered, the daemon auto-starts the first time any app calls `org.freedesktop.Notifications`.
+```ini
+# ~/.local/share/dbus-1/services/org.nwg.Notifications.service
+[D-BUS Service]
+Name=org.nwg.Notifications
+Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
+```
+
+Once registered, the daemon auto-starts the first time any app calls **either** `org.freedesktop.Notifications` (the standard notify path that browsers, mail clients, etc. use) or `org.nwg.Notifications` (the project-private count IPC that nwg-panel uses for its bell-badge query). One daemon owns both names.
 
 ## Hyprland autostart
 
@@ -142,7 +149,7 @@ Once registered, the daemon auto-starts the first time any app calls `org.freede
 exec-once = uwsm-app -- nwg-notifications --persist
 ```
 
-Autostart isn't strictly required thanks to D-Bus auto-activation, but it makes the daemon ready before the first notification arrives (avoids a few-hundred-millisecond delay on your first toast).
+Autostart isn't strictly required thanks to D-Bus auto-activation on either name, but it makes the daemon ready before the first call — avoids a few-hundred-millisecond startup delay on your first toast (or your first nwg-panel count query on cold boot).
 
 ## Signal control
 

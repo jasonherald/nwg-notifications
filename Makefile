@@ -23,8 +23,11 @@ BIN_NAME := nwg-notifications
 # D-Bus user-service location — always user-scope regardless of PREFIX.
 # XDG_DATA_HOME defaults to ~/.local/share.
 DBUS_USER_DIR := $(HOME)/.local/share/dbus-1/services
-DBUS_SERVICE_NAME := org.freedesktop.Notifications.service
-DBUS_SERVICE_TEMPLATE := data/$(DBUS_SERVICE_NAME).in
+# Two service files ship: the standard freedesktop notification interface
+# (auto-activated when an app calls `Notify`), and the project-private
+# `org.nwg.Notifications` count IPC (auto-activated when nwg-panel queries
+# the count badge on cold boot — see #65 for context).
+DBUS_SERVICE_NAMES := org.freedesktop.Notifications.service org.nwg.Notifications.service
 
 SONAR_SCANNER ?= /opt/sonar-scanner/bin/sonar-scanner
 SONAR_HOST_URL ?= https://sonar.aaru.network
@@ -33,7 +36,7 @@ SONAR_TRUSTSTORE_PASSWORD ?= changeit
 
 .PHONY: all build build-release test lint check-tools \
         lint-fmt lint-clippy lint-test lint-deny lint-audit \
-        install install-bin install-dbus uninstall \
+        install install-bin install-dbus uninstall uninstall-dbus \
         upgrade \
         sonar clean help
 
@@ -47,8 +50,9 @@ Targets:
   make lint            Full local check: fmt + clippy + test + deny + audit
   make install         Build release + install binary (system-scope) + install-dbus (user-scope)
   make install-bin     Install binary to $(DESTDIR)$(BINDIR)
-  make install-dbus    Install D-Bus service file to $(DBUS_USER_DIR) — ALWAYS user-scope (no sudo)
-  make uninstall       Remove installed binary (system) and D-Bus service file (user)
+  make install-dbus    Install D-Bus service files to $(DBUS_USER_DIR) — ALWAYS user-scope (no sudo)
+  make uninstall       Remove installed binary (system) and D-Bus service files (user)
+  make uninstall-dbus  Remove D-Bus service files only (user) — symmetric with install-dbus
   make upgrade         Resident-aware: capture running args, stop, rebuild, install, restart
   make sonar           Run SonarQube scan (requires sonar-scanner + .env)
   make clean           cargo clean
@@ -141,37 +145,57 @@ install-dbus:
 			echo "  (getent passwd returned nothing — is $$SUDO_USER a real user on this system?)"; \
 			exit 1; \
 		}; \
-		echo "sudo detected — installing D-Bus service file for user $$SUDO_USER (home: $$TARGET_HOME)"; \
+		echo "sudo detected — installing D-Bus service files for user $$SUDO_USER (home: $$TARGET_HOME)"; \
 	fi; \
 	TARGET_DIR="$$TARGET_HOME/.local/share/dbus-1/services"; \
-	TARGET_FILE="$$TARGET_DIR/$(DBUS_SERVICE_NAME)"; \
 	BIN_PATH="$(BINDIR)/$(BIN_NAME)"; \
-	echo "Installing D-Bus service file to $$TARGET_FILE"; \
-	echo "  (D-Bus Exec path → $$BIN_PATH)"; \
 	mkdir -p "$$TARGET_DIR" || exit 1; \
-	sed "s|@BIN_PATH@|$$BIN_PATH|g" "$(DBUS_SERVICE_TEMPLATE)" > "$$TARGET_FILE" || exit 1; \
+	for SERVICE_NAME in $(DBUS_SERVICE_NAMES); do \
+		TEMPLATE="data/$$SERVICE_NAME.in"; \
+		TARGET_FILE="$$TARGET_DIR/$$SERVICE_NAME"; \
+		echo "Installing D-Bus service file to $$TARGET_FILE"; \
+		echo "  (D-Bus Exec path → $$BIN_PATH)"; \
+		sed "s|@BIN_PATH@|$$BIN_PATH|g" "$$TEMPLATE" > "$$TARGET_FILE" || exit 1; \
+		if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
+			chown "$$SUDO_USER:" "$$TARGET_FILE" || { \
+				echo "ERROR: chown $$TARGET_FILE to $$SUDO_USER failed; D-Bus user-service would be unmanageable by the target user"; \
+				exit 1; \
+			}; \
+		fi; \
+	done; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
-		chown "$$SUDO_USER:" "$$TARGET_FILE" "$$TARGET_DIR" || { \
-			echo "ERROR: chown to $$SUDO_USER failed; D-Bus user-service would be unmanageable by the target user"; \
+		chown "$$SUDO_USER:" "$$TARGET_DIR" || { \
+			echo "ERROR: chown $$TARGET_DIR to $$SUDO_USER failed"; \
 			exit 1; \
 		}; \
 	fi
 
-uninstall:
-	@echo "Removing binary"
-	rm -f "$(DESTDIR)$(BINDIR)/$(BIN_NAME)"
-	@echo "Removing D-Bus service file"
+# uninstall-dbus mirrors install-dbus: removes every service file
+# install-dbus would lay down. Symmetric so packagers + scripts can
+# clean up D-Bus state without removing the binary (and vice versa).
+uninstall-dbus:
+	@echo "Removing D-Bus service files"
 	@TARGET_HOME="$$HOME"; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
 		TARGET_HOME="$$(getent passwd "$$SUDO_USER" | cut -d: -f6)"; \
 		test -n "$$TARGET_HOME" || { \
 			echo "ERROR: cannot resolve home directory for SUDO_USER=$$SUDO_USER"; \
-			echo "  (getent passwd returned nothing — D-Bus service file left behind;"; \
+			echo "  (getent passwd returned nothing — D-Bus service files left behind;"; \
 			echo "   remove manually from that user's ~/.local/share/dbus-1/services/)"; \
 			exit 1; \
 		}; \
 	fi; \
-	rm -f "$$TARGET_HOME/.local/share/dbus-1/services/$(DBUS_SERVICE_NAME)"
+	for SERVICE_NAME in $(DBUS_SERVICE_NAMES); do \
+		TARGET_FILE="$$TARGET_HOME/.local/share/dbus-1/services/$$SERVICE_NAME"; \
+		rm -f "$$TARGET_FILE" || { \
+			echo "ERROR: failed to remove $$TARGET_FILE — refusing to continue with a stale D-Bus state"; \
+			exit 1; \
+		}; \
+	done
+
+uninstall: uninstall-dbus
+	@echo "Removing binary"
+	rm -f "$(DESTDIR)$(BINDIR)/$(BIN_NAME)"
 	@echo "Uninstalled."
 
 # ─────────────────────────────────────────────────────────────────────
