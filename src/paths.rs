@@ -48,6 +48,24 @@ pub(crate) fn history_path() -> PathBuf {
     fallback_user_dir().join("nwg-notifications-history.json")
 }
 
+/// Returns the path to the JSON config file
+/// (`$XDG_CONFIG_HOME/nwg-notifications/config.json` by default).
+/// Uses `nwg_common::config::paths::config_dir`, which walks
+/// `$XDG_CONFIG_HOME` → `$HOME/.config/nwg-notifications/` → falls
+/// back to `/tmp/nwg-notifications/` with a warn-log if neither
+/// resolves. The fallback chain is the same one nwg-panel and the
+/// other nwg-shell tools use.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "callers land in Task 3 (config_file::load/save); this helper is dead-code only until then"
+    )
+)]
+pub(crate) fn config_path() -> PathBuf {
+    nwg_common::config::paths::config_dir("nwg-notifications").join("config.json")
+}
+
 /// Filename of the legacy v0.3.x history JSON. Used only by
 /// [`migrate_history_if_needed`] for the one-time upgrade migration
 /// — the daemon never writes here at runtime.
@@ -524,6 +542,24 @@ mod tests {
             result_again, None,
             "second call should be a no-op (new file already present)"
         );
+
+        let _ = std::fs::remove_dir_all(&tmpdir);
+    }
+
+    #[test]
+    fn config_path_resolves_under_xdg_config_home_when_set() {
+        let tmpdir =
+            std::env::temp_dir().join(format!("nwg-paths-config-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmpdir);
+        std::fs::create_dir_all(&tmpdir).expect("setup tmpdir");
+
+        let actual = with_env(
+            &[("XDG_CONFIG_HOME", Some(tmpdir.to_str().unwrap()))],
+            config_path,
+        );
+
+        let expected = tmpdir.join("nwg-notifications").join("config.json");
+        assert_eq!(actual, expected);
 
         let _ = std::fs::remove_dir_all(&tmpdir);
     }
