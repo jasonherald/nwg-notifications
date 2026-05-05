@@ -74,6 +74,17 @@ pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), Confi
     tmp.as_file().sync_all().map_err(ConfigFileError::Io)?;
     tmp.persist(path)
         .map_err(|e| ConfigFileError::Io(e.error))?;
+    // fsync the parent directory too: rename(2) only guarantees
+    // the new directory entry is visible after the syscall returns,
+    // not that the entry itself has been flushed to disk. Without
+    // this, a power-loss between rename and the next dirent flush
+    // can roll the entry back, leaving the previous file (or no
+    // entry at all). Cheap (one fsync on a tiny dir) and the only
+    // way to honor the full "tempfile + fsync + rename" durability
+    // contract.
+    std::fs::File::open(parent)
+        .and_then(|dir| dir.sync_all())
+        .map_err(ConfigFileError::Io)?;
     Ok(())
 }
 

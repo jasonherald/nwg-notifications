@@ -111,7 +111,7 @@ impl Default for NotificationConfig {
         // serde-deserialized "missing field" path uses these; the
         // CLI-parsed path uses clap's defaults. Both agree.
         Self {
-            version: 1,
+            version: default_config_version(),
             popup_position: PopupPosition::TopRight,
             popup_timeout: 7000,
             popup_width: POPUP_WIDTH_DEFAULT,
@@ -129,10 +129,11 @@ impl Default for NotificationConfig {
 }
 
 /// Default schema version when serde encounters a JSON file
-/// without a `"version"` field — older v0.4.0 files written by
-/// the manual jq-edit path predate the field. Treat them as
-/// version 1 (the initial schema).
-fn default_config_version() -> u32 {
+/// without a `"version"` field. Treat as version 1 (the initial
+/// schema). Single source of truth for the version constant —
+/// `Default for NotificationConfig` reuses this so the serde-default
+/// path and the first-run-write path agree by construction.
+const fn default_config_version() -> u32 {
     1
 }
 
