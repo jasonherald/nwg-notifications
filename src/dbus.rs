@@ -626,6 +626,15 @@ pub(crate) fn unread_count_to_u32(unread: usize) -> u32 {
 /// the CLI responsive when something is genuinely broken.
 const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
 
+/// Timeout for the six `--update` D-Bus pushes. Wider than
+/// `QUERY_COUNT_TIMEOUT_MS` because the setter path drops `NO_AUTO_START`
+/// (a write should auto-spawn the daemon if none is running). On a cold
+/// boot the auto-activation chain — D-Bus exec, GTK4 init, layer-shell
+/// and name registration, then method dispatch — can take a few hundred
+/// ms; 5s gives plenty of headroom while still failing fast on something
+/// genuinely broken.
+const SETTER_TIMEOUT_MS: i32 = 5_000;
+
 /// Queries the running daemon's `GetCount()` method over the session bus
 /// and returns the unread count. Uses `NO_AUTO_START` so it never spawns
 /// a daemon — if no daemon is running, this returns an error.
@@ -661,8 +670,17 @@ pub(crate) fn query_count_via_dbus() -> Result<u32, glib::Error> {
 }
 
 /// Generic D-Bus client helper used by all six `--update` push wrappers.
-/// Same NO_AUTO_START + QUERY_COUNT_TIMEOUT_MS semantics as
-/// `query_count_via_dbus`.
+/// Unlike `query_count_via_dbus`, this path *allows* auto-activation:
+/// `--update` is a write operation, so if no daemon is running the right
+/// thing is to spawn one via the `org.nwg.Notifications.service` file,
+/// queue the method call, and let it land on the freshly-spawned daemon.
+/// The fresh daemon loads `config.json`, accepts the `Set*`, and writes
+/// the field back — the *persisted-config* outcome matches an update
+/// against an already-running daemon. (Session-only state like active
+/// popup queues or accumulated `dbus_overrides` doesn't carry over from
+/// a non-existent prior daemon — but `--update` only cares about
+/// persistence.) `SETTER_TIMEOUT_MS` (5s) absorbs the cold-spawn
+/// latency.
 fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Error> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     connection.call_sync(
@@ -672,8 +690,8 @@ fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Er
         method,
         Some(&payload),
         None,
-        gio::DBusCallFlags::NO_AUTO_START,
-        QUERY_COUNT_TIMEOUT_MS,
+        gio::DBusCallFlags::NONE,
+        SETTER_TIMEOUT_MS,
         gio::Cancellable::NONE,
     )?;
     Ok(())
@@ -687,8 +705,9 @@ fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Er
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name (the
-///   `NO_AUTO_START` flag means the call doesn't spawn one).
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the value with
 ///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, an
 ///   unrecognised position string).
@@ -708,7 +727,9 @@ pub(crate) fn push_popup_position(value: &str) -> Result<(), glib::Error> {
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the value with
 ///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a value
 ///   outside the 100..=2000 range).
@@ -726,7 +747,9 @@ pub(crate) fn push_popup_width(value: u32) -> Result<(), glib::Error> {
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the value with
 ///   `org.freedesktop.DBus.Error.InvalidArgs` (for example, a value
 ///   outside the 200..=2000 range).
@@ -744,7 +767,9 @@ pub(crate) fn push_panel_width(value: u32) -> Result<(), glib::Error> {
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the payload type with
 ///   `org.freedesktop.DBus.Error.InvalidArgs` (only fires on a
 ///   non-`u32` payload — `handle_set_popup_timeout` does not enforce
@@ -763,7 +788,9 @@ pub(crate) fn push_popup_timeout(value: u32) -> Result<(), glib::Error> {
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the value with
 ///   `org.freedesktop.DBus.Error.InvalidArgs`. `handle_set_max_popups`
 ///   only rejects two cases: a non-`u32` payload, and the literal
@@ -783,7 +810,9 @@ pub(crate) fn push_max_popups(value: u32) -> Result<(), glib::Error> {
 ///
 /// Returns the underlying `glib::Error` when:
 /// - The session bus isn't reachable.
-/// - No daemon owns the `org.nwg.Notifications` name.
+/// - The daemon isn't running and D-Bus auto-activation can't recover
+///   (the `org.nwg.Notifications.service` file is missing, or its
+///   `Exec=` path doesn't resolve — see `make install-dbus`).
 /// - The daemon rejects the value with
 ///   `org.freedesktop.DBus.Error.InvalidArgs`. `handle_set_max_history`
 ///   only rejects two cases: a non-`u32` payload, and the literal

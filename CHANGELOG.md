@@ -48,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `watch_css` for our embedded-default CSS hot-reload, which is
   unchanged. Pulled in to stay current with the nwg-* family.
 
+### Fixed
+
+- `nwg-notifications --update --<flag> <value>` now auto-activates the
+  daemon when none is running, instead of failing with
+  `org.freedesktop.DBus.Error.NameHasNoOwner` ([#67](https://github.com/jasonherald/nwg-notifications/issues/67)).
+  The setter path (`call_setter_sync`) drops `NO_AUTO_START` and
+  uses a wider 5s timeout to absorb the cold-spawn latency of GTK4
+  init and D-Bus name registration. The freshly-spawned daemon
+  loads `config.json`, accepts the `Set*`, and persists the field
+  back via the same atomic-write path as a live `Set*`, so the
+  persisted config outcome matches an update against an already-
+  running daemon. `--count` still uses `NO_AUTO_START` (auto-spawning
+  a daemon just to return zero would be wrong).
+
 ## [0.4.0] — 2026-05-04
 
 ### Changed
