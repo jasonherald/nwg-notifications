@@ -186,7 +186,11 @@ uninstall-dbus:
 		}; \
 	fi; \
 	for SERVICE_NAME in $(DBUS_SERVICE_NAMES); do \
-		rm -f "$$TARGET_HOME/.local/share/dbus-1/services/$$SERVICE_NAME"; \
+		TARGET_FILE="$$TARGET_HOME/.local/share/dbus-1/services/$$SERVICE_NAME"; \
+		rm -f "$$TARGET_FILE" || { \
+			echo "ERROR: failed to remove $$TARGET_FILE — refusing to continue with a stale D-Bus state"; \
+			exit 1; \
+		}; \
 	done
 
 uninstall: uninstall-dbus
