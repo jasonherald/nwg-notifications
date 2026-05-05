@@ -675,9 +675,12 @@ pub(crate) fn query_count_via_dbus() -> Result<u32, glib::Error> {
 /// thing is to spawn one via the `org.nwg.Notifications.service` file,
 /// queue the method call, and let it land on the freshly-spawned daemon.
 /// The fresh daemon loads `config.json`, accepts the `Set*`, and writes
-/// the field back — same end-state as if the daemon had been running
-/// when the push arrived. `SETTER_TIMEOUT_MS` (5s) absorbs the
-/// cold-spawn latency.
+/// the field back — the *persisted-config* outcome matches an update
+/// against an already-running daemon. (Session-only state like active
+/// popup queues or accumulated `dbus_overrides` doesn't carry over from
+/// a non-existent prior daemon — but `--update` only cares about
+/// persistence.) `SETTER_TIMEOUT_MS` (5s) absorbs the cold-spawn
+/// latency.
 fn call_setter_sync(method: &str, payload: glib::Variant) -> Result<(), glib::Error> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     connection.call_sync(

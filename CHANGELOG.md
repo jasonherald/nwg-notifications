@@ -57,9 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   uses a wider 5s timeout to absorb the cold-spawn latency of GTK4
   init and D-Bus name registration. The freshly-spawned daemon
   loads `config.json`, accepts the `Set*`, and persists the field
-  back via the same atomic-write path as a live `Set*` — so the
-  end state is identical to "daemon was running, push, file
-  updated". `--count` still uses `NO_AUTO_START` (auto-spawning
+  back via the same atomic-write path as a live `Set*`, so the
+  persisted config outcome matches an update against an already-
+  running daemon. `--count` still uses `NO_AUTO_START` (auto-spawning
   a daemon just to return zero would be wrong).
 
 ## [0.4.0] — 2026-05-04
