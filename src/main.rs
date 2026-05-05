@@ -4,6 +4,7 @@
 //! claiming the singleton lock.
 
 mod config;
+mod config_file;
 mod dbus;
 mod listeners;
 mod notification;

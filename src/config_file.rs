@@ -1,0 +1,161 @@
+//! JSON config-file load + atomic-save for `NotificationConfig`.
+//!
+//! The file lives at `paths::config_path()` (typically
+//! `~/.config/nwg-notifications/config.json`). Schema is the
+//! `NotificationConfig` struct itself, with serde-derived
+//! kebab-case enum encoding for `PopupPosition`. Every field is
+//! `#[serde(default)]` so missing keys fall back to compiled
+//! defaults.
+//!
+//! `save` uses `tempfile::NamedTempFile::persist` for an atomic
+//! same-filesystem rename — a kill mid-write leaves the original
+//! file unchanged.
+
+use crate::config::NotificationConfig;
+use std::io;
+use std::path::Path;
+
+/// Errors that can come out of [`load`] and [`save`].
+#[derive(Debug)]
+pub(crate) enum ConfigFileError {
+    /// The config file doesn't exist at the requested path. Distinct
+    /// from other I/O errors so the caller can distinguish "first
+    /// run, write the default" from "I can't read this for some
+    /// other reason."
+    NotFound,
+    /// `serde_json` couldn't parse the file. The original `serde_json::Error`
+    /// is preserved so the operator can see the error in logs.
+    Parse(serde_json::Error),
+    /// Anything else — read failure, write failure, atomic-rename
+    /// failure, etc.
+    Io(io::Error),
+}
+
+impl std::fmt::Display for ConfigFileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigFileError::NotFound => write!(f, "config file not found"),
+            ConfigFileError::Parse(e) => write!(f, "config file parse error: {e}"),
+            ConfigFileError::Io(e) => write!(f, "config file I/O error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigFileError {}
+
+/// Load and parse the JSON config file at `path`. Missing keys fall
+/// back to the `NotificationConfig::default()` impl that mirrors
+/// clap's `default_value_t`s.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "callers land in Task 5 (main.rs wires config_file::load/save); \
+                  dead-code only until then"
+    )
+)]
+pub(crate) fn load(path: &Path) -> Result<NotificationConfig, ConfigFileError> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(ConfigFileError::NotFound),
+        Err(e) => return Err(ConfigFileError::Io(e)),
+    };
+    serde_json::from_str(&contents).map_err(ConfigFileError::Parse)
+}
+
+/// Atomically write `config` to `path`. Writes to a same-directory
+/// temp file first, then renames into place. If the parent
+/// directory doesn't exist, it's created.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "callers land in Task 5 (main.rs wires config_file::load/save); \
+                  dead-code only until then"
+    )
+)]
+pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), ConfigFileError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(ConfigFileError::Io)?;
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent).map_err(ConfigFileError::Io)?;
+    serde_json::to_writer_pretty(&mut tmp, config).map_err(ConfigFileError::Parse)?;
+    // serde_json::to_writer_pretty doesn't add a trailing newline; add
+    // one so editors that strip-trailing-whitespace don't fight us.
+    use std::io::Write;
+    tmp.write_all(b"\n").map_err(ConfigFileError::Io)?;
+    tmp.persist(path)
+        .map_err(|e| ConfigFileError::Io(e.error))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_path(suffix: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "nwg-config-file-test-{}-{suffix}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("setup test dir");
+        dir.join("config.json")
+    }
+
+    #[test]
+    fn load_round_trips_through_save() {
+        let path = test_path("roundtrip");
+        let config = NotificationConfig {
+            popup_timeout: 12345,
+            max_popups: 7,
+            ..NotificationConfig::default()
+        };
+
+        save(&path, &config).expect("save succeeds");
+        let loaded = load(&path).expect("load succeeds");
+
+        assert_eq!(loaded.popup_timeout, 12345);
+        assert_eq!(loaded.max_popups, 7);
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn load_missing_file_returns_not_found() {
+        let path = test_path("missing")
+            .parent()
+            .unwrap()
+            .join("does-not-exist.json");
+        match load(&path) {
+            Err(ConfigFileError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn load_malformed_returns_parse_error() {
+        let path = test_path("malformed");
+        std::fs::write(&path, b"{not valid json}").expect("seed bad file");
+        match load(&path) {
+            Err(ConfigFileError::Parse(_)) => {}
+            other => panic!("expected Parse, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn save_creates_parent_directory_if_missing() {
+        let nested = test_path("nested-parent")
+            .parent()
+            .unwrap()
+            .join("subdir")
+            .join("nested.json");
+        let config = NotificationConfig::default();
+        save(&nested, &config).expect("save creates parent");
+        assert!(nested.exists(), "nested file should exist after save");
+        let _ = std::fs::remove_dir_all(nested.parent().unwrap().parent().unwrap());
+    }
+}

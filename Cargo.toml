@@ -18,6 +18,10 @@ path = "src/main.rs"
 # Shared library (library + binaries all on the 0.5.x line)
 nwg-common = "0.5"
 
+# Atomic file writes for the JSON config (NamedTempFile + persist
+# = same-fs tempfile + rename(2), the canonical POSIX atomic write).
+tempfile = "3"
+
 # GTK4 + Wayland layer shell. `gtk4::gio` provides the D-Bus server
 # plumbing (bus_own_name, BusType::Session, DBusConnection); no
 # separate gio dep needed.
