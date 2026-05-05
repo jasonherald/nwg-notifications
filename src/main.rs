@@ -32,8 +32,16 @@ fn main() {
     // value_source filtering in --update mode (so we only push flags the
     // user actually passed, not their defaults).
     let matches = NotificationConfig::command().get_matches();
-    let config = NotificationConfig::from_arg_matches(&matches)
+    let cli_config = NotificationConfig::from_arg_matches(&matches)
         .expect("clap should produce a valid NotificationConfig from successful matches");
+
+    // Layered merge: defaults < JSON < CLI < (later: D-Bus Set*).
+    // CLI flags the user explicitly passed override the JSON; JSON
+    // fills in the rest from the file (or compiled defaults via
+    // load_or_create_default if the file doesn't exist).
+    let json_config = config_file::load_or_create_default(&paths::config_path());
+    let user_set = config::user_set_args(&matches);
+    let config = merge_cli_over_json(json_config, cli_config, &user_set);
 
     // Initialize logging before any early-exit CLI mode (--count, --update) so
     // their error paths can reach log::error! per the project's "log errors"
@@ -382,6 +390,53 @@ fn build_on_notify_callback(
     })
 }
 
+/// Per-field merge of CLI flags over JSON config. For each field
+/// in NotificationConfig, take the CLI value if the user
+/// explicitly passed it (`user_set` membership), else take the
+/// JSON value. The `count` and `update` fields are always taken
+/// from CLI — they're transient mode flags, not config knobs.
+fn merge_cli_over_json(
+    mut json: NotificationConfig,
+    cli: NotificationConfig,
+    user_set: &std::collections::HashSet<&'static str>,
+) -> NotificationConfig {
+    if user_set.contains("popup_position") {
+        json.popup_position = cli.popup_position;
+    }
+    if user_set.contains("popup_timeout") {
+        json.popup_timeout = cli.popup_timeout;
+    }
+    if user_set.contains("popup_width") {
+        json.popup_width = cli.popup_width;
+    }
+    if user_set.contains("panel_width") {
+        json.panel_width = cli.panel_width;
+    }
+    if user_set.contains("max_popups") {
+        json.max_popups = cli.max_popups;
+    }
+    if user_set.contains("max_history") {
+        json.max_history = cli.max_history;
+    }
+    if user_set.contains("persist") {
+        json.persist = cli.persist;
+    }
+    if user_set.contains("dnd") {
+        json.dnd = cli.dnd;
+    }
+    if user_set.contains("debug") {
+        json.debug = cli.debug;
+    }
+    if user_set.contains("wm") {
+        json.wm = cli.wm;
+    }
+    // count and update are always CLI-driven — they're transient
+    // mode flags, not config knobs.
+    json.count = cli.count;
+    json.update = cli.update;
+    json
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +452,36 @@ mod tests {
     fn count_changed_predicate_skips_when_equal() {
         assert!(!should_emit_count_changed(0, 0));
         assert!(!should_emit_count_changed(7, 7));
+    }
+
+    #[test]
+    fn merge_cli_over_json_takes_cli_for_user_set_fields_and_json_for_rest() {
+        let json = NotificationConfig {
+            popup_timeout: 9999,
+            max_popups: 99,
+            max_history: 999,
+            ..NotificationConfig::default()
+        };
+
+        let cli = NotificationConfig {
+            popup_timeout: 1, // user passed --popup-timeout 1
+            max_popups: 2,    // user passed --max-popups 2
+            // max_history not passed; cli.max_history is the default (200)
+            ..NotificationConfig::default()
+        };
+
+        let mut user_set = std::collections::HashSet::new();
+        user_set.insert("popup_timeout");
+        user_set.insert("max_popups");
+        // max_history NOT in user_set
+
+        let merged = merge_cli_over_json(json, cli, &user_set);
+
+        assert_eq!(merged.popup_timeout, 1, "user-set CLI value wins");
+        assert_eq!(merged.max_popups, 2, "user-set CLI value wins");
+        assert_eq!(
+            merged.max_history, 999,
+            "JSON value wins when CLI not user-set"
+        );
     }
 }

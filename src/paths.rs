@@ -1,6 +1,9 @@
 //! Path conventions for the daemon's runtime artifacts.
 //!
-//! Two helpers live here:
+//! Three helpers live here:
+//! - [`config_path`] — the JSON file under `$XDG_CONFIG_HOME` (or
+//!   `$HOME/.config/`) that the user can hand-edit and the daemon
+//!   reads on startup.
 //! - [`history_path`] — the JSON file under `$XDG_CACHE_HOME` that
 //!   `--persist` mode round-trips.
 //! - [`status_path`] — the JSON file under `$XDG_RUNTIME_DIR` that
@@ -55,13 +58,6 @@ pub(crate) fn history_path() -> PathBuf {
 /// back to `/tmp/nwg-notifications/` with a warn-log if neither
 /// resolves. The fallback chain is the same one nwg-panel and the
 /// other nwg-shell tools use.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "callers land in Task 3 (config_file::load/save); this helper is dead-code only until then"
-    )
-)]
 pub(crate) fn config_path() -> PathBuf {
     nwg_common::config::paths::config_dir("nwg-notifications").join("config.json")
 }

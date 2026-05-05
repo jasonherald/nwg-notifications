@@ -167,6 +167,39 @@ pub(crate) fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str
         .collect()
 }
 
+/// Returns the names of every CLI flag the user explicitly passed
+/// on the command line (as opposed to clap's compiled defaults
+/// kicking in). Used by the boot-time merge in main() to decide
+/// which fields override the JSON config and which fall through to
+/// it.
+///
+/// Distinct from `user_set_live_args` (which covers only the
+/// `--update`-eligible subset for D-Bus push). This one is
+/// boot-only and includes flags that aren't pushable at runtime
+/// (e.g. `--debug`, `--wm`).
+pub(crate) fn user_set_args(matches: &clap::ArgMatches) -> std::collections::HashSet<&'static str> {
+    use clap::parser::ValueSource;
+    let mut out = std::collections::HashSet::new();
+    let candidates = [
+        "popup_position",
+        "popup_timeout",
+        "popup_width",
+        "panel_width",
+        "max_popups",
+        "max_history",
+        "persist",
+        "dnd",
+        "debug",
+        "wm",
+    ];
+    for name in candidates {
+        if matches.value_source(name) == Some(ValueSource::CommandLine) {
+            out.insert(name);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

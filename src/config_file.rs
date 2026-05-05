@@ -86,13 +86,6 @@ pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), Confi
 /// Returns `NotificationConfig` unconditionally — by the time this
 /// returns, the daemon either has a usable config or has logged
 /// what went wrong.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "caller lands in Task 5 (main.rs startup wiring); this helper is dead-code only until then"
-    )
-)]
 pub(crate) fn load_or_create_default(path: &Path) -> NotificationConfig {
     match load(path) {
         Ok(config) => config,
