@@ -302,7 +302,7 @@ fn activate_notifications(
     let state_reload = Rc::clone(&state);
     let config_reload = Rc::clone(config);
     let on_change_reload = Rc::clone(&on_state_change);
-    gtk4::glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+    gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(new_config) = config_watcher.try_recv() {
             apply_config_reload(&state_reload, &config_reload, &new_config);
             on_change_reload();
