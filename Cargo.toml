@@ -22,6 +22,10 @@ nwg-common = "0.5"
 # = same-fs tempfile + rename(2), the canonical POSIX atomic write).
 tempfile = "3"
 
+# Inotify-based config-file watcher for hot-reload. notify = "8"
+# to match nwg-common's pin (cargo MVS dedupes).
+notify = "8"
+
 # GTK4 + Wayland layer shell. `gtk4::gio` provides the D-Bus server
 # plumbing (bus_own_name, BusType::Session, DBusConnection); no
 # separate gio dep needed.

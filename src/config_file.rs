@@ -110,6 +110,94 @@ pub(crate) fn load_or_create_default(path: &Path) -> NotificationConfig {
     }
 }
 
+/// Starts an inotify-based watcher on `path` and returns the
+/// receiver end of an mpsc channel. Each detected modification
+/// triggers a reload + send of the parsed `NotificationConfig`
+/// (or a logged-warning + skip if the reload fails). The watcher
+/// thread runs detached; the returned channel keeps it alive as
+/// long as the receiver exists.
+///
+/// Caller bridges the channel onto the glib main loop via
+/// `glib::timeout_add_local` (see `main.rs::activate_notifications`
+/// for the wiring). Same pattern `listeners.rs` uses for the
+/// signal-thread bridge.
+pub(crate) fn start_watcher(path: &Path) -> std::sync::mpsc::Receiver<NotificationConfig> {
+    use notify::{Event, EventKind, RecursiveMode, Watcher};
+    let (tx, rx) = std::sync::mpsc::channel::<NotificationConfig>();
+    let watch_path = path.to_path_buf();
+
+    std::thread::spawn(move || {
+        let (notify_tx, notify_rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
+        let mut watcher = match notify::recommended_watcher(notify_tx) {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("Failed to construct config-file watcher: {e}");
+                return;
+            }
+        };
+        // Watch the parent dir, not the file itself: inotify's
+        // IN_MODIFY on a renamed-replaced file (atomic-write
+        // pattern) doesn't fire if we watch the file's inode
+        // directly. Watching the dir + filtering by filename
+        // catches both in-place modifies and rename-into-place.
+        let parent = match watch_path.parent() {
+            Some(p) => p,
+            None => {
+                log::warn!(
+                    "Config path {} has no parent directory; cannot watch",
+                    watch_path.display()
+                );
+                return;
+            }
+        };
+        if let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive) {
+            log::warn!(
+                "Failed to start config-file watcher on {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+
+        for event in notify_rx {
+            let event = match event {
+                Ok(e) => e,
+                Err(e) => {
+                    log::warn!("Config-file watcher event error: {e}");
+                    continue;
+                }
+            };
+            // Only react to writes/creates affecting our specific
+            // config file (parent dir might see other files change).
+            let touches_our_file = event.paths.iter().any(|p| p == &watch_path);
+            if !touches_our_file {
+                continue;
+            }
+            let is_modify_or_create =
+                matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_));
+            if !is_modify_or_create {
+                continue;
+            }
+            match load(&watch_path) {
+                Ok(config) => {
+                    if tx.send(config).is_err() {
+                        // Receiver dropped (daemon shutting down).
+                        return;
+                    }
+                }
+                Err(ConfigFileError::NotFound) => {
+                    // File was deleted; treat as no-op (don't reset
+                    // to defaults — the user might be mid-edit).
+                }
+                Err(e) => {
+                    log::warn!("Config-file reload failed: {e}");
+                }
+            }
+        }
+    });
+
+    rx
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
