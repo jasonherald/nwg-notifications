@@ -8,11 +8,13 @@
 //! defaults.
 //!
 //! `save` uses `tempfile::NamedTempFile::persist` for an atomic
-//! same-filesystem rename — a kill mid-write leaves the original
-//! file unchanged.
+//! same-filesystem rename, with a `sync_all` fsync before the rename —
+//! both a kill mid-write *and* a power loss leave a consistent file
+//! (either the previous content or the new content, never half-written).
 
 use crate::config::NotificationConfig;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 
 /// Errors that can come out of [`load`] and [`save`].
@@ -75,16 +77,17 @@ pub(crate) fn load(path: &Path) -> Result<NotificationConfig, ConfigFileError> {
     )
 )]
 pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), ConfigFileError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(ConfigFileError::Io)?;
-    }
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(ConfigFileError::Io)?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent).map_err(ConfigFileError::Io)?;
     serde_json::to_writer_pretty(&mut tmp, config).map_err(ConfigFileError::Parse)?;
     // serde_json::to_writer_pretty doesn't add a trailing newline; add
     // one so editors that strip-trailing-whitespace don't fight us.
-    use std::io::Write;
     tmp.write_all(b"\n").map_err(ConfigFileError::Io)?;
+    // Force the data to disk before the rename so a power-loss
+    // between the rename(2) commit and the data-block flush can't
+    // leave a zero-byte file. Per spec: tempfile + fsync + rename.
+    tmp.as_file().sync_all().map_err(ConfigFileError::Io)?;
     tmp.persist(path)
         .map_err(|e| ConfigFileError::Io(e.error))?;
     Ok(())
