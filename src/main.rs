@@ -411,51 +411,65 @@ fn build_on_notify_callback(
 /// explicitly passed it (`user_set` membership), else take the
 /// JSON value. The `count` and `update` fields are always taken
 /// from CLI — they're transient mode flags, not config knobs.
+///
+/// **Coupling:** the per-field ladder below must enumerate every
+/// name in [`config::OVERRIDABLE_FIELDS`]. Drift is detected by
+/// the `overridable_fields_match_clap_arg_set` test in `config.rs`:
+/// adding a new field to `NotificationConfig` without registering
+/// it there will fail CI; the registry is then your prompt to add
+/// a matching `if user_set.contains(...)` arm here.
 fn merge_cli_over_json(
     mut json: NotificationConfig,
     cli: NotificationConfig,
     user_set: &std::collections::HashSet<&'static str>,
 ) -> NotificationConfig {
-    if user_set.contains("popup_position") {
-        json.popup_position = cli.popup_position;
-    }
-    if user_set.contains("popup_timeout") {
-        json.popup_timeout = cli.popup_timeout;
-    }
-    if user_set.contains("popup_width") {
-        json.popup_width = cli.popup_width;
-    }
-    if user_set.contains("panel_width") {
-        json.panel_width = cli.panel_width;
-    }
-    if user_set.contains("max_popups") {
-        json.max_popups = cli.max_popups;
-    }
-    if user_set.contains("max_history") {
-        json.max_history = cli.max_history;
-    }
-    if user_set.contains("persist") {
-        json.persist = cli.persist;
-    }
-    if user_set.contains("dnd") {
-        json.dnd = cli.dnd;
-    }
-    if user_set.contains("debug") {
-        json.debug = cli.debug;
-    }
-    if user_set.contains("wm") {
-        json.wm = cli.wm;
+    for field in config::OVERRIDABLE_FIELDS {
+        if !user_set.contains(field) {
+            continue;
+        }
+        copy_overridable_field(field, &cli, &mut json);
     }
     // count and update are always CLI-driven — they're transient
-    // mode flags, not config knobs.
+    // mode flags, not config knobs, and aren't tracked in
+    // OVERRIDABLE_FIELDS.
     json.count = cli.count;
     json.update = cli.update;
     json
 }
 
+/// Copies the named field from `src` to `dst`. Backing dispatch for
+/// the merge ladders that drive off [`config::OVERRIDABLE_FIELDS`].
+/// Panics if asked for a name not in `OVERRIDABLE_FIELDS` — the
+/// drift-detection tests in `config.rs` ensure that condition is
+/// unreachable in practice.
+fn copy_overridable_field(field: &str, src: &NotificationConfig, dst: &mut NotificationConfig) {
+    match field {
+        "popup_position" => dst.popup_position = src.popup_position,
+        "popup_timeout" => dst.popup_timeout = src.popup_timeout,
+        "popup_width" => dst.popup_width = src.popup_width,
+        "panel_width" => dst.panel_width = src.panel_width,
+        "max_popups" => dst.max_popups = src.max_popups,
+        "max_history" => dst.max_history = src.max_history,
+        "persist" => dst.persist = src.persist,
+        "dnd" => dst.dnd = src.dnd,
+        "debug" => dst.debug = src.debug,
+        "wm" => dst.wm = src.wm,
+        other => unreachable!(
+            "copy_overridable_field called with unregistered field: {other}. \
+             Drift between config::OVERRIDABLE_FIELDS and this match — \
+             register the new field name in config.rs."
+        ),
+    }
+}
+
 /// Applies a hot-reloaded config into the live in-memory config,
 /// per-field. Skips any field whose name is in
 /// `state.dbus_overrides` (Set* sticky for the session).
+///
+/// **Coupling:** the per-field ladder below must enumerate every
+/// name in [`config::RELOADABLE_FIELDS`]. The CLI-only fields
+/// (`debug`, `wm`) are deliberately absent — they don't appear in
+/// the JSON, so there's nothing to reload.
 fn apply_config_reload(
     state: &Rc<RefCell<NotificationState>>,
     config: &Rc<RefCell<NotificationConfig>>,
@@ -463,29 +477,11 @@ fn apply_config_reload(
 ) {
     let overrides = state.borrow().dbus_overrides.clone();
     let mut cfg = config.borrow_mut();
-    if !overrides.contains("popup_position") {
-        cfg.popup_position = new.popup_position;
-    }
-    if !overrides.contains("popup_timeout") {
-        cfg.popup_timeout = new.popup_timeout;
-    }
-    if !overrides.contains("popup_width") {
-        cfg.popup_width = new.popup_width;
-    }
-    if !overrides.contains("panel_width") {
-        cfg.panel_width = new.panel_width;
-    }
-    if !overrides.contains("max_popups") {
-        cfg.max_popups = new.max_popups;
-    }
-    if !overrides.contains("max_history") {
-        cfg.max_history = new.max_history;
-    }
-    if !overrides.contains("persist") {
-        cfg.persist = new.persist;
-    }
-    if !overrides.contains("dnd") {
-        cfg.dnd = new.dnd;
+    for field in config::RELOADABLE_FIELDS {
+        if overrides.contains(field) {
+            continue;
+        }
+        copy_overridable_field(field, new, &mut cfg);
     }
 }
 

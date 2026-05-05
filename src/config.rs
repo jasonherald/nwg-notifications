@@ -137,6 +137,29 @@ const fn default_config_version() -> u32 {
     1
 }
 
+/// Central field-name registry for the JSON config + D-Bus + CLI
+/// merge plumbing. Three nested categories, each a strict superset of
+/// the next (verified by `field_registry_subsets_are_consistent`):
+///
+/// - [`OVERRIDABLE_FIELDS`] (10) — every CLI flag the boot-time
+///   merge tracks via `user_set_args`. Includes `debug` and `wm`,
+///   which are CLI-only and never appear in the JSON.
+/// - [`RELOADABLE_FIELDS`] (8) — `OVERRIDABLE_FIELDS` minus the two
+///   CLI-only flags. The set of fields the inotify hot-reload path
+///   (`apply_config_reload`) reapplies from disk.
+/// - [`LIVE_UPDATABLE_ARGS`] (6) — `RELOADABLE_FIELDS` minus the two
+///   startup-only flags (`persist`, `dnd`). The set of fields the
+///   D-Bus `Set*` handlers can mutate at runtime, and the only fields
+///   `--update` is allowed to push.
+///
+/// Adding a field to `NotificationConfig`: append the snake-cased
+/// arg name to whichever lists apply, then update the per-field
+/// ladders in `merge_cli_over_json` (uses `OVERRIDABLE_FIELDS`),
+/// `apply_config_reload` (uses `RELOADABLE_FIELDS`), and the D-Bus
+/// dispatcher (uses `LIVE_UPDATABLE_ARGS`). The
+/// `overridable_fields_match_clap_arg_set` test catches a missing
+/// `OVERRIDABLE_FIELDS` entry at CI time.
+///
 /// The set of clap arg IDs that are inherently live-updatable. Flags
 /// outside this set (e.g. `--persist`, `--wm`) are skipped in `--update`
 /// mode regardless of whether the user passed them, because pushing them
@@ -148,6 +171,38 @@ pub(crate) const LIVE_UPDATABLE_ARGS: &[&str] = &[
     "popup_timeout",
     "max_popups",
     "max_history",
+];
+
+/// JSON-visible config fields the inotify hot-reload path
+/// (`apply_config_reload`) can re-apply from disk. Strict superset
+/// of [`LIVE_UPDATABLE_ARGS`]: adds `persist` and `dnd`, which are
+/// startup-only flags but legitimate JSON keys.
+pub(crate) const RELOADABLE_FIELDS: &[&str] = &[
+    "popup_position",
+    "popup_width",
+    "panel_width",
+    "popup_timeout",
+    "max_popups",
+    "max_history",
+    "persist",
+    "dnd",
+];
+
+/// Every CLI flag the boot-time merge (`merge_cli_over_json`) and
+/// `user_set_args` track. Strict superset of [`RELOADABLE_FIELDS`]:
+/// adds `debug` and `wm`, which are CLI-only knobs and never appear
+/// in the JSON.
+pub(crate) const OVERRIDABLE_FIELDS: &[&str] = &[
+    "popup_position",
+    "popup_width",
+    "panel_width",
+    "popup_timeout",
+    "max_popups",
+    "max_history",
+    "persist",
+    "dnd",
+    "debug",
+    "wm",
 ];
 
 /// Returns the subset of `LIVE_UPDATABLE_ARGS` whose value source on the
@@ -180,25 +235,11 @@ pub(crate) fn user_set_live_args(matches: &clap::ArgMatches) -> Vec<&'static str
 /// (e.g. `--debug`, `--wm`).
 pub(crate) fn user_set_args(matches: &clap::ArgMatches) -> std::collections::HashSet<&'static str> {
     use clap::parser::ValueSource;
-    let mut out = std::collections::HashSet::new();
-    let candidates = [
-        "popup_position",
-        "popup_timeout",
-        "popup_width",
-        "panel_width",
-        "max_popups",
-        "max_history",
-        "persist",
-        "dnd",
-        "debug",
-        "wm",
-    ];
-    for name in candidates {
-        if matches.value_source(name) == Some(ValueSource::CommandLine) {
-            out.insert(name);
-        }
-    }
-    out
+    OVERRIDABLE_FIELDS
+        .iter()
+        .filter(|name| matches.value_source(name) == Some(ValueSource::CommandLine))
+        .copied()
+        .collect()
 }
 
 #[cfg(test)]
@@ -499,6 +540,92 @@ mod tests {
         assert!(
             !json.contains("update"),
             "update must not appear in JSON; got: {json}"
+        );
+    }
+
+    #[test]
+    fn field_registry_subsets_are_consistent() {
+        // The three lists are nested supersets:
+        //   LIVE_UPDATABLE_ARGS ⊂ RELOADABLE_FIELDS ⊂ OVERRIDABLE_FIELDS
+        // Each ⊂ relationship is a real semantic claim — the boot-time
+        // merge's set of tracked fields is a superset of the
+        // hot-reload path's set, which is a superset of the D-Bus
+        // Set*-able set. Drift breaks the JSON-config contract.
+        let live: std::collections::HashSet<&str> = LIVE_UPDATABLE_ARGS.iter().copied().collect();
+        let reloadable: std::collections::HashSet<&str> =
+            RELOADABLE_FIELDS.iter().copied().collect();
+        let overridable: std::collections::HashSet<&str> =
+            OVERRIDABLE_FIELDS.iter().copied().collect();
+
+        for field in &live {
+            assert!(
+                reloadable.contains(field),
+                "{field} is in LIVE_UPDATABLE_ARGS but missing from RELOADABLE_FIELDS"
+            );
+        }
+        for field in &reloadable {
+            assert!(
+                overridable.contains(field),
+                "{field} is in RELOADABLE_FIELDS but missing from OVERRIDABLE_FIELDS"
+            );
+        }
+
+        // The CLI-only fields are exactly the difference between
+        // OVERRIDABLE and RELOADABLE (debug, wm). If a future spec
+        // change moves one of these into the JSON, both lists need
+        // to grow in sync.
+        let cli_only: std::collections::HashSet<&str> =
+            overridable.difference(&reloadable).copied().collect();
+        let expected_cli_only: std::collections::HashSet<&str> =
+            ["debug", "wm"].iter().copied().collect();
+        assert_eq!(
+            cli_only, expected_cli_only,
+            "OVERRIDABLE - RELOADABLE should be exactly {{debug, wm}}"
+        );
+
+        // Same shape: the difference between RELOADABLE and LIVE is
+        // the startup-only flags (persist, dnd). Adding a `SetPersist`
+        // or `SetDnd` D-Bus method later would shift these.
+        let startup_only: std::collections::HashSet<&str> =
+            reloadable.difference(&live).copied().collect();
+        let expected_startup_only: std::collections::HashSet<&str> =
+            ["persist", "dnd"].iter().copied().collect();
+        assert_eq!(
+            startup_only, expected_startup_only,
+            "RELOADABLE - LIVE should be exactly {{persist, dnd}}"
+        );
+    }
+
+    #[test]
+    fn overridable_fields_match_clap_arg_set() {
+        // Drift detector for the most common case: someone adds a
+        // new field to NotificationConfig + a `#[arg(...)]` line,
+        // but forgets to register the snake-case name in
+        // OVERRIDABLE_FIELDS. clap exposes the registered arg IDs
+        // (which match clap's auto-derived snake_case form for our
+        // struct), so we compare the registry directly.
+        let cmd = NotificationConfig::command();
+        let clap_args: std::collections::HashSet<&str> = cmd
+            .get_arguments()
+            .map(|arg| arg.get_id().as_str())
+            .filter(|id| {
+                // Exclude transient mode flags (count, update) that
+                // are intentionally outside the merge plumbing, and
+                // clap's auto-added help/version.
+                !matches!(*id, "count" | "update" | "help" | "version")
+            })
+            .collect();
+
+        let registry: std::collections::HashSet<&str> =
+            OVERRIDABLE_FIELDS.iter().copied().collect();
+
+        assert_eq!(
+            clap_args,
+            registry,
+            "OVERRIDABLE_FIELDS drifted from clap's arg set. \
+             Missing from registry: {:?}; extra in registry: {:?}.",
+            clap_args.difference(&registry).collect::<Vec<_>>(),
+            registry.difference(&clap_args).collect::<Vec<_>>(),
         );
     }
 }
