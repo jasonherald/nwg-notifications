@@ -455,7 +455,7 @@ fn handle_set_u32(
     match result {
         Ok(()) => {
             state.borrow_mut().mark_dbus_override(field_name);
-            persist_config(&config.borrow());
+            persist_config(field_name, &config.borrow());
             invocation.return_value(None);
             on_state_change();
         }
@@ -482,7 +482,7 @@ fn handle_set_popup_position(
         Ok(pos) => {
             config.borrow_mut().popup_position = pos;
             state.borrow_mut().mark_dbus_override("popup_position");
-            persist_config(&config.borrow());
+            persist_config("popup_position", &config.borrow());
             invocation.return_value(None);
             on_state_change();
         }
@@ -849,14 +849,49 @@ fn extract_urgency(hints: &glib::Variant) -> Urgency {
         .unwrap_or(Urgency::Normal)
 }
 
-/// Atomically writes the current config to the JSON file. Logs
-/// (warn-level) on failure but doesn't propagate the error — the
-/// in-memory mutation already succeeded, so the live update is
-/// visible immediately; persistence is best-effort. Operator sees
-/// the warning in the journal.
-fn persist_config(config: &crate::config::NotificationConfig) {
+/// Atomically writes the just-changed field to the JSON file by
+/// loading the current on-disk values, overlaying only `field_name`
+/// from the runtime config, and saving the result. This avoids
+/// leaking CLI-only session overrides (e.g., `--persist`, `--dnd`)
+/// into the file: those fields belong in the JSON schema, but a
+/// user passing `--dnd` for one diagnostic run shouldn't have that
+/// state baked into config.json forever just because they later
+/// pushed an unrelated `SetMaxPopups`.
+///
+/// On a malformed on-disk file we log + skip the write rather than
+/// clobber the user's mid-edit content. On `NotFound` we start from
+/// `NotificationConfig::default()` (first-run write where Set* is
+/// the very first persistence event). Logs (warn-level) on save
+/// failure but doesn't propagate the error — the in-memory
+/// mutation already succeeded, so persistence is best-effort.
+fn persist_config(field_name: &str, runtime: &crate::config::NotificationConfig) {
     let path = crate::paths::config_path();
-    if let Err(e) = crate::config_file::save(&path, config) {
+    let mut to_save = match crate::config_file::load(&path) {
+        Ok(c) => c,
+        Err(crate::config_file::ConfigFileError::NotFound) => {
+            crate::config::NotificationConfig::default()
+        }
+        Err(e) => {
+            log::warn!(
+                "Cannot persist Set* update because config at {} is unreadable: {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    match field_name {
+        "popup_position" => to_save.popup_position = runtime.popup_position,
+        "popup_timeout" => to_save.popup_timeout = runtime.popup_timeout,
+        "popup_width" => to_save.popup_width = runtime.popup_width,
+        "panel_width" => to_save.panel_width = runtime.panel_width,
+        "max_popups" => to_save.max_popups = runtime.max_popups,
+        "max_history" => to_save.max_history = runtime.max_history,
+        _ => {
+            log::warn!("persist_config called with unknown field: {field_name}; refusing to write");
+            return;
+        }
+    }
+    if let Err(e) = crate::config_file::save(&path, &to_save) {
         log::warn!("Failed to persist Set* update to {}: {e}", path.display());
     }
 }
