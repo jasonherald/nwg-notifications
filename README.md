@@ -151,6 +151,32 @@ exec-once = uwsm-app -- nwg-notifications --persist
 
 Autostart isn't strictly required thanks to D-Bus auto-activation on either name, but it makes the daemon ready before the first call — avoids a few-hundred-millisecond startup delay on your first toast (or your first nwg-panel count query on cold boot).
 
+## Configuration
+
+The daemon reads `~/.config/nwg-notifications/config.json` at startup. Every key is optional; missing keys fall back to the same defaults the CLI flags use.
+
+```jsonc
+{
+  "version": 1,
+  "popup_position": "top-right",
+  "popup_width": 380,
+  "panel_width": 380,
+  "popup_timeout": 7000,
+  "max_popups": 5,
+  "max_history": 200,
+  "persist": true,
+  "dnd": false
+}
+```
+
+**First run:** if the file doesn't exist, the daemon writes the defaults to it on first startup. You get a real file you can hand-edit.
+
+**Hot reload:** edits to the file are picked up automatically (inotify-based). No daemon restart required.
+
+**Precedence (lowest to highest):** compiled defaults < `config.json` < CLI flags < `org.nwg.Notifications.Set*` D-Bus calls. CLI flags override the JSON for one-shot diagnostic runs (`nwg-notifications --max-popups 1`); D-Bus `Set*` overrides for hot-update use cases (nwg-shell-config). `Set*` updates also write back to the JSON, so they persist across daemon restarts.
+
+**Sticky `Set*` semantics:** within a session, a `Set*` call wins over subsequent JSON file edits for that field. Restart the daemon to reset.
+
 ## Signal control
 
 ```bash

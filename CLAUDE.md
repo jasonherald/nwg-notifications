@@ -85,6 +85,16 @@ data/
 - **No `#[allow(dead_code)]`, no magic numbers, log errors, tests at bottom of file.**
 - **Protocol compliance** — every change to the D-Bus surface must be checked against the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification-spec/latest/). The spec is small but strict.
 
+## Configuration
+
+`config.json` at `paths::config_path()` (typically `~/.config/nwg-notifications/config.json`). Schema = the `NotificationConfig` clap-derived struct, with `serde::{Serialize, Deserialize}` + struct-level `#[serde(default)]` and a hand-rolled `Default` impl mirroring clap's `default_value_t`s.
+
+**Layered merge:** `defaults < config.json < CLI flags < D-Bus Set*`. Implemented in `main.rs::merge_cli_over_json` (boot) + `main.rs::apply_config_reload` (hot-reload). The D-Bus layer is in-memory only via `state.dbus_overrides: HashSet<&'static str>` — the field set there causes the hot-reload path to skip those fields. `Set*` calls also write back to `config.json` via `config_file::save` so the value survives daemon restart.
+
+**Atomic writes:** `config_file::save` uses `tempfile::NamedTempFile::persist` for same-fs rename(2) with `fsync` before the rename. Both kill-mid-write and power-loss leave a consistent file (either previous content or new content, never half-written).
+
+**Hot reload:** `config_file::start_watcher` runs `notify::recommended_watcher` on the parent dir (watching the file inode directly misses atomic-rename writes). Reloads bridge to glib via `mpsc::Receiver` + `glib::timeout_add_local` at 100ms — same pattern `listeners.rs` uses for SIGRTMIN signals.
+
 ## Key patterns
 
 ### D-Bus notification server
