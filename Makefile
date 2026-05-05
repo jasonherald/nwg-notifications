@@ -36,7 +36,7 @@ SONAR_TRUSTSTORE_PASSWORD ?= changeit
 
 .PHONY: all build build-release test lint check-tools \
         lint-fmt lint-clippy lint-test lint-deny lint-audit \
-        install install-bin install-dbus uninstall \
+        install install-bin install-dbus uninstall uninstall-dbus \
         upgrade \
         sonar clean help
 
@@ -50,8 +50,9 @@ Targets:
   make lint            Full local check: fmt + clippy + test + deny + audit
   make install         Build release + install binary (system-scope) + install-dbus (user-scope)
   make install-bin     Install binary to $(DESTDIR)$(BINDIR)
-  make install-dbus    Install D-Bus service file to $(DBUS_USER_DIR) — ALWAYS user-scope (no sudo)
-  make uninstall       Remove installed binary (system) and D-Bus service file (user)
+  make install-dbus    Install D-Bus service files to $(DBUS_USER_DIR) — ALWAYS user-scope (no sudo)
+  make uninstall       Remove installed binary (system) and D-Bus service files (user)
+  make uninstall-dbus  Remove D-Bus service files only (user) — symmetric with install-dbus
   make upgrade         Resident-aware: capture running args, stop, rebuild, install, restart
   make sonar           Run SonarQube scan (requires sonar-scanner + .env)
   make clean           cargo clean
@@ -169,9 +170,10 @@ install-dbus:
 		}; \
 	fi
 
-uninstall:
-	@echo "Removing binary"
-	rm -f "$(DESTDIR)$(BINDIR)/$(BIN_NAME)"
+# uninstall-dbus mirrors install-dbus: removes every service file
+# install-dbus would lay down. Symmetric so packagers + scripts can
+# clean up D-Bus state without removing the binary (and vice versa).
+uninstall-dbus:
 	@echo "Removing D-Bus service files"
 	@TARGET_HOME="$$HOME"; \
 	if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
@@ -186,6 +188,10 @@ uninstall:
 	for SERVICE_NAME in $(DBUS_SERVICE_NAMES); do \
 		rm -f "$$TARGET_HOME/.local/share/dbus-1/services/$$SERVICE_NAME"; \
 	done
+
+uninstall: uninstall-dbus
+	@echo "Removing binary"
+	rm -f "$(DESTDIR)$(BINDIR)/$(BIN_NAME)"
 	@echo "Uninstalled."
 
 # ─────────────────────────────────────────────────────────────────────

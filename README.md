@@ -96,7 +96,7 @@ Cargo-install users without a source clone should use the manual equivalent — 
 cargo install nwg-notifications
 ```
 
-This is the right path if you prefer the Rust toolchain workflow over `make install`. **Heads-up: this is a two-step install** — `cargo install` only places the binary at `~/.cargo/bin/nwg-notifications`, it doesn't create the D-Bus service file the daemon needs to be reachable. After running the command above, manually create the service file (see [D-Bus service](#d-bus-service) below; it's a ~5-line file pointing at the installed binary). Once the service file is in place, the daemon auto-activates the first time any app calls `org.freedesktop.Notifications`.
+This is the right path if you prefer the Rust toolchain workflow over `make install`. **Heads-up: this is a two-step install** — `cargo install` only places the binary at `~/.cargo/bin/nwg-notifications`, it doesn't create the **two** D-Bus service files the daemon needs to be reachable on either of its bus names. After running the command above, manually create both service files (see [D-Bus service](#d-bus-service) below; both are ~5-line files pointing at the installed binary). Once both service files are in place, the daemon auto-activates the first time any app calls **either** `org.freedesktop.Notifications` (the standard notify path) or `org.nwg.Notifications` (the count IPC nwg-panel uses). One daemon owns both names.
 
 For the all-in-one experience, use the [`make install`](#make-install--recommended-one-stop-binary--d-bus-service-file) path above.
 
