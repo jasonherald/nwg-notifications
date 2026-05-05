@@ -48,14 +48,6 @@ impl std::error::Error for ConfigFileError {}
 /// Load and parse the JSON config file at `path`. Missing keys fall
 /// back to the `NotificationConfig::default()` impl that mirrors
 /// clap's `default_value_t`s.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "callers land in Task 5 (main.rs wires config_file::load/save); \
-                  dead-code only until then"
-    )
-)]
 pub(crate) fn load(path: &Path) -> Result<NotificationConfig, ConfigFileError> {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -68,14 +60,6 @@ pub(crate) fn load(path: &Path) -> Result<NotificationConfig, ConfigFileError> {
 /// Atomically write `config` to `path`. Writes to a same-directory
 /// temp file first, then renames into place. If the parent
 /// directory doesn't exist, it's created.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "callers land in Task 5 (main.rs wires config_file::load/save); \
-                  dead-code only until then"
-    )
-)]
 pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), ConfigFileError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent).map_err(ConfigFileError::Io)?;
@@ -91,6 +75,46 @@ pub(crate) fn save(path: &Path, config: &NotificationConfig) -> Result<(), Confi
     tmp.persist(path)
         .map_err(|e| ConfigFileError::Io(e.error))?;
     Ok(())
+}
+
+/// Boot-time loader: try to load the config from `path`. If the file
+/// doesn't exist, write the compiled-in defaults to it and return
+/// those (first-run UX). If the file exists but won't parse, log
+/// the error and return defaults *without* writing — overwriting
+/// a malformed file the user is mid-editing is the wrong thing.
+///
+/// Returns `NotificationConfig` unconditionally — by the time this
+/// returns, the daemon either has a usable config or has logged
+/// what went wrong.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "caller lands in Task 5 (main.rs startup wiring); this helper is dead-code only until then"
+    )
+)]
+pub(crate) fn load_or_create_default(path: &Path) -> NotificationConfig {
+    match load(path) {
+        Ok(config) => config,
+        Err(ConfigFileError::NotFound) => {
+            log::info!(
+                "Config file {} does not exist; writing defaults",
+                path.display()
+            );
+            let defaults = NotificationConfig::default();
+            if let Err(e) = save(path, &defaults) {
+                log::warn!("Failed to write default config to {}: {e}", path.display());
+            }
+            defaults
+        }
+        Err(e) => {
+            log::error!(
+                "Failed to load config from {}: {e}; falling back to defaults",
+                path.display()
+            );
+            NotificationConfig::default()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,5 +184,42 @@ mod tests {
         save(&nested, &config).expect("save creates parent");
         assert!(nested.exists(), "nested file should exist after save");
         let _ = std::fs::remove_dir_all(nested.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn load_or_create_default_writes_defaults_when_missing() {
+        let path = test_path("first-run");
+        // Path doesn't exist yet (test_path created the parent dir
+        // but no file).
+        assert!(!path.exists());
+
+        let config = load_or_create_default(&path);
+
+        assert!(path.exists(), "default file should be created");
+        // Reload to confirm the written file is parseable.
+        let reloaded = load(&path).expect("written file should parse");
+        assert_eq!(reloaded.popup_timeout, config.popup_timeout);
+        assert_eq!(reloaded.max_popups, config.max_popups);
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn load_or_create_default_returns_defaults_on_parse_error_without_overwriting() {
+        let path = test_path("parse-error-preserved");
+        let original = b"{not valid json}";
+        std::fs::write(&path, original).expect("seed bad file");
+
+        let _config = load_or_create_default(&path);
+
+        // The bad file should not have been overwritten.
+        let after = std::fs::read(&path).expect("read should still work");
+        assert_eq!(
+            after.as_slice(),
+            original,
+            "load_or_create_default must not overwrite a malformed file"
+        );
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }
