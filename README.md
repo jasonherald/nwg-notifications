@@ -155,7 +155,7 @@ Autostart isn't strictly required thanks to D-Bus auto-activation on either name
 
 The daemon reads `~/.config/nwg-notifications/config.json` at startup. Every key is optional; missing keys fall back to the same defaults the CLI flags use.
 
-```jsonc
+```json
 {
   "version": 1,
   "popup_position": "top-right",
@@ -168,6 +168,8 @@ The daemon reads `~/.config/nwg-notifications/config.json` at startup. Every key
   "dnd": false
 }
 ```
+
+Plain JSON — no comments. CLI-only flags (`--debug`, `--wm`, `--count`, `--update`) are not honored if added to this file; they exist only as transient process modes or developer toggles.
 
 **First run:** if the file doesn't exist, the daemon writes the defaults to it on first startup. You get a real file you can hand-edit.
 

@@ -1535,7 +1535,7 @@ Tell the user (verbatim or close):
 >
 > **3. CLI override:**
 >
-> - Restart the daemon with an explicit flag: `kill $(pidof nwg-notifications) && nwg-notifications --persist --popup-timeout 3000 &`
+> - Restart the daemon with an explicit flag: `kill $(pidof nwg-notifications) 2>/dev/null || true; nwg-notifications --persist --popup-timeout 3000 &`
 > - The CLI flag should override the JSON value. `notify-send "cli wins"` should auto-dismiss after 3s.
 >
 > **4. Set* write-back + sticky:**
