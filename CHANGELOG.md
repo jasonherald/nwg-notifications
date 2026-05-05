@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.1] — Unreleased
 
+### Added
+
+- Second D-Bus service file `org.nwg.Notifications.service` so the
+  daemon auto-activates when an app calls **either**
+  `org.freedesktop.Notifications` (the standard notify path) or
+  `org.nwg.Notifications` (the project-private count IPC that
+  nwg-panel uses for its bell badge). Closes [#65](https://github.com/jasonherald/nwg-notifications/issues/65)
+  / [#63](https://github.com/jasonherald/nwg-notifications/issues/63).
+  Before this fix, nwg-panel users on cold boot would see
+  `NameHasNoOwner` errors until a notifying app (browser, mail
+  client, etc.) fired the first notification and triggered the
+  freedesktop-name auto-activation. `make install-dbus` now installs
+  both service files; `make uninstall` removes both. Stand-alone
+  `cargo install` users need to create the second file manually —
+  see the README's `D-Bus service` section for the template.
+
 ### Changed
 
 - Bumped `nwg-common` dependency from `0.4` to `0.5`. No public-API

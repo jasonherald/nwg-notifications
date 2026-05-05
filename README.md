@@ -124,7 +124,7 @@ nwg-notifications --wm sway --persist
 
 ## D-Bus service
 
-`make install-dbus` installs this file into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create it manually:
+`make install-dbus` installs **two** service files into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create them manually:
 
 ```ini
 # ~/.local/share/dbus-1/services/org.freedesktop.Notifications.service
@@ -133,7 +133,14 @@ Name=org.freedesktop.Notifications
 Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
 ```
 
-Once registered, the daemon auto-starts the first time any app calls `org.freedesktop.Notifications`.
+```ini
+# ~/.local/share/dbus-1/services/org.nwg.Notifications.service
+[D-BUS Service]
+Name=org.nwg.Notifications
+Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
+```
+
+Once registered, the daemon auto-starts the first time any app calls **either** `org.freedesktop.Notifications` (the standard notify path that browsers, mail clients, etc. use) or `org.nwg.Notifications` (the project-private count IPC that nwg-panel uses for its bell-badge query). One daemon owns both names.
 
 ## Hyprland autostart
 
@@ -142,7 +149,7 @@ Once registered, the daemon auto-starts the first time any app calls `org.freede
 exec-once = uwsm-app -- nwg-notifications --persist
 ```
 
-Autostart isn't strictly required thanks to D-Bus auto-activation, but it makes the daemon ready before the first notification arrives (avoids a few-hundred-millisecond delay on your first toast).
+Autostart isn't strictly required thanks to D-Bus auto-activation on either name, but it makes the daemon ready before the first call — avoids a few-hundred-millisecond startup delay on your first toast (or your first nwg-panel count query on cold boot).
 
 ## Signal control
 
