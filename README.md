@@ -146,8 +146,16 @@ Once registered, the daemon auto-starts the first time any app calls **either** 
 
 ```ini
 # ~/.config/hypr/autostart.conf
+exec-once = nwg-notifications --persist
+```
+
+On systems with [`uwsm`](https://github.com/Vladimir-csp/uwsm) (Universal Wayland Session Manager) — common on Arch + systemd setups — you may prefer to prefix with `uwsm-app --` to inherit the systemd user session environment:
+
+```ini
 exec-once = uwsm-app -- nwg-notifications --persist
 ```
+
+The bare form works everywhere; `uwsm-app --` is optional (Slackware and other non-systemd setups don't ship it).
 
 Autostart isn't strictly required thanks to D-Bus auto-activation on either name, but it makes the daemon ready before the first call — avoids a few-hundred-millisecond startup delay on your first toast (or your first nwg-panel count query on cold boot).
 
