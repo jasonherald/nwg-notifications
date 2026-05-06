@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.4.2] — 2026-05-05
+
+### Fixed
+
+- README's Hyprland autostart snippet no longer prefixes with
+  `uwsm-app --` by default. The bare
+  `exec-once = nwg-notifications --persist` form works on every
+  Wayland compositor; `uwsm-app --` is now mentioned as optional
+  for users on systemd + uwsm setups (typical Arch). Spotted by
+  [@nwg-piotr](https://github.com/nwg-piotr) in the [#63](https://github.com/jasonherald/nwg-notifications/issues/63)
+  thread — Slackware and other non-systemd distros don't ship
+  `uwsm-app`, so the previous default would silently break for
+  those users.
+
 ## [0.4.1] — 2026-05-05
 
 ### Added
