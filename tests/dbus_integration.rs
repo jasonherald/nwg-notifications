@@ -130,6 +130,55 @@ impl Drop for CountFixture {
     }
 }
 
+/// Iterates `ctx` until `cond` returns true or `deadline` passes.
+/// Deadlines are generous — GitHub runners are slow and shared; tight
+/// bounds are how CI gets flaky.
+fn pump_until(ctx: &glib::MainContext, deadline: Duration, mut cond: impl FnMut() -> bool) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < deadline {
+        while ctx.iteration(false) {}
+        if cond() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// Subscribes to one signal on `connection` and returns a closure that
+/// yields the first received payload, pumping `ctx` up to `deadline`.
+/// The caller must have pushed `ctx` as the thread-default context
+/// before subscribing so that signal callbacks land on it.
+fn catch_signal(
+    connection: &gio::DBusConnection,
+    object_path: &str,
+    interface: &str,
+    member: &str,
+    ctx: glib::MainContext,
+) -> impl FnMut(Duration) -> Option<glib::Variant> {
+    let received: std::rc::Rc<std::cell::RefCell<Option<glib::Variant>>> =
+        std::rc::Rc::new(std::cell::RefCell::new(None));
+    let sink = std::rc::Rc::clone(&received);
+    let sub = connection.subscribe_to_signal(
+        None,
+        Some(interface),
+        Some(member),
+        Some(object_path),
+        None,
+        gio::DBusSignalFlags::NONE,
+        move |signal| {
+            *sink.borrow_mut() = Some(signal.parameters.clone());
+        },
+    );
+    // `sub` (SignalSubscription) must be captured by the closure — dropping it
+    // calls signal_unsubscribe immediately, which would race the emit.
+    move |deadline| {
+        let _keep = &sub;
+        pump_until(&ctx, deadline, || received.borrow().is_some());
+        received.borrow_mut().take()
+    }
+}
+
 #[test]
 #[ignore = "needs isolated session bus — run via `make test-integration`"]
 fn get_count_round_trip() {
@@ -179,4 +228,53 @@ fn get_count_times_out_on_hung_daemon() {
         "took far longer than QUERY_COUNT_TIMEOUT_MS ({}) allows: {elapsed:?}",
         nwg_notifications::dbus::QUERY_COUNT_TIMEOUT_MS
     );
+}
+
+#[test]
+#[ignore = "needs isolated session bus — run via `make test-integration`"]
+fn emit_count_changed_wire_payload() {
+    let ctx = glib::MainContext::new();
+    ctx.with_thread_default(|| {
+        let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
+            .expect("isolated session bus reachable");
+        let mut recv = catch_signal(
+            &connection,
+            NWG_COUNT_OBJECT_PATH,
+            NWG_COUNT_BUS_NAME,
+            "CountChanged",
+            ctx.clone(),
+        );
+
+        nwg_notifications::dbus::emit_count_changed(&connection, 42);
+
+        let params = recv(Duration::from_secs(5)).expect("CountChanged not received within 5s");
+        let count: u32 = params.child_value(0).get().expect("payload arg0 is u32");
+        assert_eq!(count, 42);
+    })
+    .expect("test thread acquires private main context");
+}
+
+#[test]
+#[ignore = "needs isolated session bus — run via `make test-integration`"]
+fn emit_action_invoked_wire_payload() {
+    let ctx = glib::MainContext::new();
+    ctx.with_thread_default(|| {
+        let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)
+            .expect("isolated session bus reachable");
+        let mut recv = catch_signal(
+            &connection,
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "ActionInvoked",
+            ctx.clone(),
+        );
+
+        nwg_notifications::dbus::emit_action_invoked(&connection, 7, "default");
+
+        let params = recv(Duration::from_secs(5)).expect("ActionInvoked not received within 5s");
+        let id: u32 = params.child_value(0).get().expect("payload arg0 is u32");
+        let action: String = params.child_value(1).get().expect("payload arg1 is String");
+        assert_eq!((id, action.as_str()), (7, "default"));
+    })
+    .expect("test thread acquires private main context");
 }
