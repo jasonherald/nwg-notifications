@@ -8,7 +8,7 @@
 use gtk4::{gio, glib};
 use nwg_notifications::dbus::{NWG_COUNT_BUS_NAME, NWG_COUNT_OBJECT_PATH};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Minimal introspection XML for the fixture: just the surface the
 /// tests exercise, mirroring the daemon's NWG_COUNT_INTROSPECT_XML.
@@ -137,4 +137,43 @@ fn get_count_round_trip() {
     let count = nwg_notifications::dbus::query_count_via_dbus()
         .expect("GetCount round-trip against the fixture");
     assert_eq!(count, 7);
+}
+
+#[test]
+#[ignore = "needs isolated session bus — run via `make test-integration`"]
+fn get_count_no_daemon_errors() {
+    // No fixture: nothing owns the name on the isolated bus. The call
+    // uses NO_AUTO_START, so even a service file visible to the bus
+    // must not spawn a daemon; the bus reports NameHasNoOwner.
+    let err = nwg_notifications::dbus::query_count_via_dbus()
+        .expect_err("NO_AUTO_START with no owner must error, not activate");
+    assert!(
+        err.matches(gio::DBusError::NameHasNoOwner),
+        "expected NameHasNoOwner, got: {err}"
+    );
+}
+
+#[test]
+#[ignore = "needs isolated session bus — run via `make test-integration`"]
+fn get_count_times_out_on_hung_daemon() {
+    let _fixture = CountFixture::spawn(0, true);
+    let start = Instant::now();
+    let err = nwg_notifications::dbus::query_count_via_dbus()
+        .expect_err("a hung daemon must produce a timeout error");
+    let elapsed = start.elapsed();
+    assert!(
+        err.matches(gio::IOErrorEnum::TimedOut),
+        "expected TimedOut, got: {err}"
+    );
+    // Sanity-bound the elapsed window around QUERY_COUNT_TIMEOUT_MS
+    // (2s). Generous upper bound: shared CI runners stall.
+    assert!(
+        elapsed >= Duration::from_millis(1_500),
+        "returned before the timeout window: {elapsed:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(8),
+        "took far longer than QUERY_COUNT_TIMEOUT_MS ({}) allows: {elapsed:?}",
+        nwg_notifications::dbus::QUERY_COUNT_TIMEOUT_MS
+    );
 }
