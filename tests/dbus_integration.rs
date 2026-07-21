@@ -369,6 +369,7 @@ fn daemon_stays_resident_hold_guard() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .expect("spawn nwg-notifications under headless sway");
+    // Not underscore-prefixed like _sway_guard: the test inspects it below.
     let mut daemon_guard = ProcGuard(daemon);
 
     // Past GTK init + activate + hold(). Without the hold guard,
@@ -379,6 +380,8 @@ fn daemon_stays_resident_hold_guard() {
     let status = daemon_guard.0.try_wait().expect("try_wait on daemon");
     assert!(
         status.is_none(),
-        "daemon exited within 3s (status: {status:?}) — ApplicationHoldGuard is not keeping GApplication resident"
+        "daemon exited within 3s (status: {status:?}) — either ApplicationHoldGuard \
+         is not keeping GApplication resident, or the daemon failed before activate \
+         (e.g. compositor init against the test sway's SWAYSOCK/WAYLAND_DISPLAY)"
     );
 }
