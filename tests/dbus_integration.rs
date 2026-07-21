@@ -142,9 +142,12 @@ fn get_count_round_trip() {
 #[test]
 #[ignore = "needs isolated session bus — run via `make test-integration`"]
 fn get_count_no_daemon_errors() {
-    // No fixture: nothing owns the name on the isolated bus. The call
-    // uses NO_AUTO_START, so even a service file visible to the bus
-    // must not spawn a daemon; the bus reports NameHasNoOwner.
+    // No fixture is constructed here: nothing owns the name on the
+    // isolated bus (relies on RAII fixture teardown in the other tests
+    // having released it), and dbus-run-session registers no service
+    // files, so nothing can activate either — the bus reports
+    // NameHasNoOwner. Exercising NO_AUTO_START's activation-suppression
+    // specifically would need a service file on the isolated bus.
     let err = nwg_notifications::dbus::query_count_via_dbus()
         .expect_err("NO_AUTO_START with no owner must error, not activate");
     assert!(
