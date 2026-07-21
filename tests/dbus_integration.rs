@@ -149,6 +149,11 @@ fn pump_until(ctx: &glib::MainContext, deadline: Duration, mut cond: impl FnMut(
 /// yields the first received payload, pumping `ctx` up to `deadline`.
 /// The caller must have pushed `ctx` as the thread-default context
 /// before subscribing so that signal callbacks land on it.
+///
+/// Emitting and subscribing on the same connection still proves a real
+/// wire round-trip: `emit_signal(None)` broadcasts through the bus
+/// daemon, which routes the message back to matching subscriptions —
+/// it is not a local short-circuit echo.
 fn catch_signal(
     connection: &gio::DBusConnection,
     object_path: &str,
@@ -170,8 +175,11 @@ fn catch_signal(
             *sink.borrow_mut() = Some(signal.parameters.clone());
         },
     );
-    // `sub` (SignalSubscription) must be captured by the closure — dropping it
-    // calls signal_unsubscribe immediately, which would race the emit.
+    // `sub` (SignalSubscription) must be captured by the returned closure —
+    // dropping it calls signal_unsubscribe immediately, which would race the
+    // emit. The `&sub` reference below is what forces the move-capture: a
+    // move closure only captures variables its body references, so deleting
+    // the line would un-capture `sub` and silently reintroduce the race.
     move |deadline| {
         let _keep = &sub;
         pump_until(&ctx, deadline, || received.borrow().is_some());
