@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.5.0] — 2026-07-21
+
+### Changed
+
+- MSRV raised `1.95` → `1.97`; `rust-toolchain.toml` now pins `1.97.1`.
+- `nwg-common` bumped `0.5` → `0.6`, moving the GTK stack to `gtk4`
+  `0.11` / `gtk4-layer-shell` `0.8` in step with the rest of the
+  nwg-* family.
+
+### Security
+
+- `anyhow` updated past
+  [RUSTSEC-2026-0190](https://rustsec.org/advisories/RUSTSEC-2026-0190.html)
+  (unsoundness in `Error::downcast_mut()`). Closes
+  [#75](https://github.com/jasonherald/nwg-notifications/issues/75).
+
 ## [0.4.2] — 2026-05-05
 
 ### Fixed

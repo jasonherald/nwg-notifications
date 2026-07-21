@@ -27,7 +27,7 @@ Claims `org.freedesktop.Notifications`, shows popup toasts, and ships a slide-ou
 
 ### Requirements
 
-- **Rust 1.95** or later (pinned in `rust-toolchain.toml`; rustup picks it up automatically)
+- **Rust 1.97** or later (pinned in `rust-toolchain.toml`; rustup picks it up automatically)
 - **GTK4** and **gtk4-layer-shell** system libraries
 - A Wayland compositor with `wlr-layer-shell` support (Hyprland, Sway)
 - A working **session D-Bus** (every Linux desktop has this — calling it out because nwg-notifications is fundamentally a D-Bus daemon: it claims `org.freedesktop.Notifications` on the session bus, so installing only the binary without registering a D-Bus service file means apps can't reach it)
