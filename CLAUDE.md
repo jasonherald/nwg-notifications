@@ -17,10 +17,11 @@ cargo test                    # Unit tests
 cargo clippy --all-targets    # Lint (should be zero warnings)
 cargo fmt --all               # Format
 make test                     # Unit tests + clippy
+make test-integration         # D-Bus integration tests (isolated bus via dbus-run-session; liveness test needs sway)
 make lint                     # Full check: fmt + clippy + test + deny + audit
 ```
 
-Per [tests/integration/CLASSIFICATION.md](https://github.com/jasonherald/mac-doc-hyprland/blob/main/tests/integration/CLASSIFICATION.md) in the monorepo, this repo owns daemon-launch + signal-resilience tests (SIGRTMIN+4 panel toggle, SIGRTMIN+5 DND toggle). Those run from the monorepo's headless-Sway harness — this repo has no local integration runner or `make test-integration` target yet ([#16](https://github.com/jasonherald/nwg-notifications/issues/16) tracks adding a D-Bus-shaped one). The D-Bus `notify-send` path isn't exercised in integration today because the harness uses an isolated D-Bus to avoid interfering with the real desktop session.
+Per [tests/integration/CLASSIFICATION.md](https://github.com/jasonherald/mac-doc-hyprland/blob/main/tests/integration/CLASSIFICATION.md) in the monorepo, this repo owns daemon-launch + signal-resilience tests (SIGRTMIN+4 panel toggle, SIGRTMIN+5 DND toggle); those still run from the monorepo's headless-Sway harness. Locally, `make test-integration` (#16) runs the D-Bus suite in `tests/dbus_integration.rs` on an isolated bus via `dbus-run-session` — GetCount round-trip/`NO_AUTO_START`/timeout, `CountChanged` + `ActionInvoked` wire payloads, and a hold-guard liveness test that spawns the real binary under headless Sway (self-skips without sway, e.g. in CI). Never run the `#[ignore]`d tests outside the make target: on a desktop they'd hit the real session bus.
 
 ## Install (dev workflow)
 
@@ -51,7 +52,9 @@ The daemon auto-starts the first time any app calls `org.freedesktop.Notificatio
 
 ```text
 src/
-├── main.rs            # Coordinator (~160 lines)
+├── main.rs            # Binary shim → nwg_notifications::run()
+├── lib.rs             # Lib target: test seam only, not a public API
+├── app.rs             # Coordinator (CLI modes, GTK app, hold guard)
 ├── config.rs          # clap CLI with PopupPosition enum
 ├── notification.rs    # Notification struct, Urgency enum, action parsing
 ├── state.rs           # NotificationState: history, groups, DND, dnd_expires
@@ -72,6 +75,9 @@ assets/
 
 data/
 └── org.freedesktop.Notifications.service  # D-Bus service file (installed by make install-dbus)
+
+tests/
+└── dbus_integration.rs  # #[ignore]d isolated-bus suite (make test-integration)
 ```
 
 ## Conventions
@@ -88,7 +94,7 @@ data/
 
 `config.json` at `paths::config_path()` (typically `~/.config/nwg-notifications/config.json`). Schema = the `NotificationConfig` clap-derived struct, with `serde::{Serialize, Deserialize}` + struct-level `#[serde(default)]` and a hand-rolled `Default` impl mirroring clap's `default_value_t`s.
 
-**Layered merge:** `defaults < config.json < CLI flags < D-Bus Set*`. Implemented in `main.rs::merge_cli_over_json` (boot) + `main.rs::apply_config_reload` (hot-reload). The D-Bus layer is in-memory only via `state.dbus_overrides: HashSet<&'static str>` — the field set there causes the hot-reload path to skip those fields. `Set*` calls also write back to `config.json` via `config_file::save` so the value survives daemon restart.
+**Layered merge:** `defaults < config.json < CLI flags < D-Bus Set*`. Implemented in `app.rs::merge_cli_over_json` (boot) + `app.rs::apply_config_reload` (hot-reload). The D-Bus layer is in-memory only via `state.dbus_overrides: HashSet<&'static str>` — the field set there causes the hot-reload path to skip those fields. `Set*` calls also write back to `config.json` via `config_file::save` so the value survives daemon restart.
 
 **Atomic writes:** `config_file::save` uses `tempfile::NamedTempFile::persist` for same-fs rename(2) with `fsync` before the rename. Both kill-mid-write and power-loss leave a consistent file (either previous content or new content, never half-written).
 

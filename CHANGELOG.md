@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.1] — Unreleased
 
+### Added
+
+- D-Bus integration test suite (#16): `make test-integration` runs
+  GetCount round-trip / `NO_AUTO_START` / timeout coverage plus
+  `CountChanged` and `ActionInvoked` wire-payload assertions on an
+  isolated session bus via `dbus-run-session`, and a hold-guard
+  liveness test under headless Sway (skips when `sway` is absent —
+  CI runs the bus tests only). To give the suite a linkable seam the
+  crate now ships a library target alongside the binary; the library
+  surface is `#[doc(hidden)]`, is **not a public API**, and carries no
+  semver guarantees.
+
 ### Fixed
 
 - `make upgrade` no longer aborts with a bogus prefix-mismatch error
