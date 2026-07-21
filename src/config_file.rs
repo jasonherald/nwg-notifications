@@ -129,7 +129,7 @@ pub(crate) fn load_or_create_default(path: &Path) -> NotificationConfig {
 /// long as the receiver exists.
 ///
 /// Caller bridges the channel onto the glib main loop via
-/// `glib::timeout_add_local` (see `main.rs::activate_notifications`
+/// `glib::timeout_add_local` (see `app.rs::activate_notifications`
 /// for the wiring). Same pattern `listeners.rs` uses for the
 /// signal-thread bridge.
 pub(crate) fn start_watcher(path: &Path) -> std::sync::mpsc::Receiver<NotificationConfig> {
