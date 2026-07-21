@@ -125,7 +125,7 @@ Panel and DND menu use a transparent backdrop layer-shell surface behind them. B
 
 ## Waybar integration
 
-The daemon writes its current state to `$XDG_RUNTIME_DIR/nwg-notifications-status.json` (unread count, DND status, etc.) and signals waybar via `SIGRTMIN+11` on state change — no polling. Waybar's `signal: 11` handler re-reads the file. See the README for the waybar module config snippet.
+The daemon writes its current state (unread count, DND status, etc.) to `nwg-notifications-status.json` under `$XDG_RUNTIME_DIR` — see `paths::status_path()` for the per-user fallback when that's unset — and signals waybar via `SIGRTMIN+11` on state change; no polling. Waybar's `signal: 11` handler re-reads the file. See the README for the waybar module config snippet.
 
 ## See also
 
