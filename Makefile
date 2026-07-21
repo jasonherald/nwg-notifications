@@ -34,7 +34,7 @@ SONAR_HOST_URL ?= https://sonar.aaru.network
 SONAR_TRUSTSTORE ?= /tmp/sonar-truststore.jks
 SONAR_TRUSTSTORE_PASSWORD ?= changeit
 
-.PHONY: all build build-release test lint check-tools \
+.PHONY: all build build-release test test-integration lint check-tools \
         lint-fmt lint-clippy lint-test lint-deny lint-audit \
         install install-bin install-dbus uninstall uninstall-dbus \
         upgrade \
@@ -47,6 +47,7 @@ Targets:
   make build           Debug build
   make build-release   Release build (used by install + upgrade)
   make test            cargo test + cargo clippy --all-targets
+  make test-integration  D-Bus integration tests on an isolated bus (liveness test needs sway)
   make lint            Full local check: fmt + clippy + test + deny + audit
   make install         Build release + install binary (system-scope) + install-dbus (user-scope)
   make install-bin     Install binary to $(DESTDIR)$(BINDIR)
@@ -80,6 +81,22 @@ build-release:
 test:
 	$(CARGO) test
 	$(CARGO) clippy --all-targets
+
+# Isolated-bus D-Bus integration tests (#16). dbus-run-session spawns a
+# private session bus, exports DBUS_SESSION_BUS_ADDRESS to the child,
+# and tears the bus down on exit — the desktop session's bus and the
+# live daemon are never touched. --test-threads=1 because the tests own
+# the one well-known org.nwg.Notifications name; parallel owners would
+# collide. The hold-guard liveness test additionally needs `sway` on
+# PATH and self-skips with a message when it's absent (e.g. GitHub
+# runners). NEVER run the ignored tests outside dbus-run-session: on a
+# desktop they would hit the real session bus.
+test-integration:
+	@command -v dbus-run-session >/dev/null 2>&1 || { \
+		echo "ERROR: dbus-run-session not found — install your distro's dbus package"; \
+		exit 1; \
+	}
+	dbus-run-session -- $(CARGO) test --test dbus_integration -- --ignored --test-threads=1
 
 check-tools:
 	@if ! command -v cargo-deny >/dev/null 2>&1; then \
