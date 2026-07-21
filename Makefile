@@ -240,6 +240,14 @@ uninstall: uninstall-dbus
 # failed the install, leaving the desktop session with a silently dead
 # notification daemon.
 #
+# Replaced-on-disk binary (issue #77, mirrors nwg-dock 489c30d): once
+# `make install` has replaced the file, the kernel reports the running
+# daemon's /proc/$PID/exe as "<path> (deleted)". Compared verbatim that
+# string can never equal the install target, so the guard aborted the
+# exact workflow `make upgrade` exists for (binary already replaced,
+# daemon needs a restart). Both comparison sites strip the " (deleted)"
+# marker before comparing.
+#
 # Atomicity (issue #5): recipe order is validate → capture args → install
 # → kill → restart. Install happens while the daemon is still running
 # (Linux's mmap semantics mean replacing the binary file via `install`'s
@@ -274,6 +282,7 @@ upgrade: build-release
 		INSTALL_TARGET_REAL="$$(readlink -f "$$INSTALL_TARGET" 2>/dev/null || echo "$$INSTALL_TARGET")"; \
 		for pid in $$RUNNING_PIDS; do \
 			RUNNING_EXE="$$(readlink -f "/proc/$$pid/exe" 2>/dev/null)"; \
+			RUNNING_EXE=$${RUNNING_EXE%" (deleted)"}; \
 			if [ -z "$$RUNNING_EXE" ]; then \
 				if [ -d "/proc/$$pid" ]; then \
 					echo "ERROR: unable to resolve /proc/$$pid/exe for live daemon pid $$pid"; \
@@ -309,6 +318,7 @@ upgrade: build-release
 			if ! DUMP_OUT="$$(target/release/$(BIN_NAME) --dump-args "$$pid" 2>/dev/null)"; then \
 				ACTUAL_START="$$(sed 's/.*) //' "/proc/$$pid/stat" 2>/dev/null | awk '{print $$20}' || true)"; \
 				ACTUAL_EXE="$$(readlink -f "/proc/$$pid/exe" 2>/dev/null || true)"; \
+				ACTUAL_EXE=$${ACTUAL_EXE%" (deleted)"}; \
 				if [ -n "$$ACTUAL_START" ] && [ "$$ACTUAL_START" = "$$START_TIME" ] && \
 				   [ "$$ACTUAL_EXE" = "$$INSTALL_TARGET_REAL" ]; then \
 					echo "ERROR: --dump-args failed for live daemon pid $$pid"; \

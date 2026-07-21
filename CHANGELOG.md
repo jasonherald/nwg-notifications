@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [Unreleased]
+
+### Fixed
+
+- `make upgrade` no longer aborts with a bogus prefix-mismatch error
+  when the installed binary was already replaced on disk (e.g. by a
+  `make install` while the daemon was running). The kernel reports the
+  running daemon's `/proc/PID/exe` as `<path> (deleted)` in that state;
+  the install-target guard now strips the marker before comparing.
+  Closes [#77](https://github.com/jasonherald/nwg-notifications/issues/77);
+  mirrors the same fix in nwg-dock.
+
 ## [0.5.0] — 2026-07-21
 
 ### Changed
