@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
-## [0.5.1] — Unreleased
+## [0.6.0] — Unreleased
 
 ### Added
 
@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   crate now ships a library target alongside the binary; the library
   surface is `#[doc(hidden)]`, is **not a public API**, and carries no
   semver guarantees.
+
+### Removed
+
+- The v0.3.x legacy-lock startup peek. Since 0.4.0 the daemon peeked
+  for an old instance running under the pre-rename `mac-notifications`
+  singleton-lock name and refused to start beside it (a "one-release
+  transition" promised removed in 0.5.0 — this is that removal, one
+  release late). Anyone upgrading straight from ≤0.3.x mid-session
+  should stop the old daemon by hand before starting the new one. The
+  legacy history-file migration is unrelated and stays. Closes
+  [#81](https://github.com/jasonherald/nwg-notifications/issues/81).
 
 ### Fixed
 
