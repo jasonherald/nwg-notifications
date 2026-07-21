@@ -86,9 +86,11 @@ const NWG_COUNT_INTROSPECT_XML: &str = r#"
 "#;
 
 /// D-Bus name for the nwg-specific count IPC interface.
-pub(crate) const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
+#[doc(hidden)]
+pub const NWG_COUNT_BUS_NAME: &str = "org.nwg.Notifications";
 /// D-Bus object path for the nwg-specific count IPC interface.
-pub(crate) const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
+#[doc(hidden)]
+pub const NWG_COUNT_OBJECT_PATH: &str = "/org/nwg/Notifications";
 
 /// Callback invoked when a new notification arrives via D-Bus.
 /// Implement this to show popups, update waybar, etc.
@@ -595,7 +597,8 @@ fn handle_server_info(invocation: gio::DBusMethodInvocation) {
 }
 
 /// Emits the ActionInvoked D-Bus signal to the sending app.
-pub(crate) fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key: &str) {
+#[doc(hidden)]
+pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key: &str) {
     let params = glib::Variant::from((id, action_key));
     if let Err(e) = connection.emit_signal(
         None::<&str>,
@@ -624,7 +627,8 @@ pub(crate) fn unread_count_to_u32(unread: usize) -> u32 {
 /// Local D-Bus calls to the running daemon are sub-millisecond when healthy;
 /// 2s is generous enough to absorb transient bus contention while keeping
 /// the CLI responsive when something is genuinely broken.
-const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
+#[doc(hidden)]
+pub const QUERY_COUNT_TIMEOUT_MS: i32 = 2_000;
 
 /// Timeout for the six `--update` D-Bus pushes. Wider than
 /// `QUERY_COUNT_TIMEOUT_MS` because the setter path drops `NO_AUTO_START`
@@ -648,7 +652,8 @@ const SETTER_TIMEOUT_MS: i32 = 5_000;
 /// - No daemon owns the `org.nwg.Notifications` name (`NO_AUTO_START` semantics).
 /// - The call exceeds `QUERY_COUNT_TIMEOUT_MS`.
 /// - The reply payload doesn't unpack to the expected `(u32,)` tuple.
-pub(crate) fn query_count_via_dbus() -> Result<u32, glib::Error> {
+#[doc(hidden)]
+pub fn query_count_via_dbus() -> Result<u32, glib::Error> {
     let connection = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
     let result = connection.call_sync(
         Some(NWG_COUNT_BUS_NAME),
@@ -836,7 +841,8 @@ pub(crate) fn is_unknown_method_error(err: &glib::Error) -> bool {
 /// Emits CountChanged on the org.nwg.Notifications interface.
 ///
 /// Best-effort: a failure here doesn't affect anything else; we log and move on.
-pub(crate) fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
+#[doc(hidden)]
+pub fn emit_count_changed(connection: &gio::DBusConnection, count: u32) {
     let params = glib::Variant::from((count,));
     if let Err(e) = connection.emit_signal(
         None::<&str>,

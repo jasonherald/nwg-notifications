@@ -9,7 +9,7 @@
 mod app;
 mod config;
 mod config_file;
-mod dbus;
+pub mod dbus;
 mod listeners;
 mod notification;
 mod paths;
