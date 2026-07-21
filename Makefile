@@ -87,7 +87,9 @@ test:
 # and tears the bus down on exit — the desktop session's bus and the
 # live daemon are never touched. --test-threads=1 because the tests own
 # the one well-known org.nwg.Notifications name; parallel owners would
-# collide. The hold-guard liveness test additionally needs `sway` on
+# collide. Serial execution also keeps gio's shared per-process session
+# connection (bus_get_sync) from being pumped by two tests at once.
+# The hold-guard liveness test additionally needs `sway` on
 # PATH and self-skips with a message when it's absent (e.g. GitHub
 # runners). NEVER run the ignored tests outside dbus-run-session: on a
 # desktop they would hit the real session bus.

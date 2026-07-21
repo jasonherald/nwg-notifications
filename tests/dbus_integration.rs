@@ -121,6 +121,8 @@ impl CountFixture {
 
 impl Drop for CountFixture {
     fn drop(&mut self) {
+        // quit() is invoked cross-thread (test thread → fixture loop);
+        // g_main_loop_quit is thread-safe and wakes the fixture's context.
         self.main_loop.quit();
         if let Some(t) = self.thread.take() {
             let _ = t.join();
