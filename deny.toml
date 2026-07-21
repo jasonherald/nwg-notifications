@@ -53,10 +53,11 @@ workspace-default-features = "allow"
 external-default-features = "allow"
 allow = []
 deny = []
-# Transitive duplicates while the proc-macro ecosystem migrates syn 2 → 3.
-# Both are the latest of their line — waiting on derive crates to adopt syn 3.
+# Transitive duplicate while the proc-macro ecosystem migrates syn 2 → 3.
+# Pinned to the exact 2.x resolved in Cargo.lock so a future intra-2.x
+# duplicate still warns; refresh the pin when `cargo update` moves syn.
 skip = [
-    { crate = "syn@2", reason = "proc-macro deps split between syn 2 and syn 3" },
+    { crate = "syn@2.0.119", reason = "proc-macro deps split between syn 2 and syn 3" },
 ]
 
 # =============================================================================
