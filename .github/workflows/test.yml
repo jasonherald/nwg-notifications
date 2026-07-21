@@ -18,3 +18,16 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: ./.github/actions/setup-gtk4
       - run: cargo test --workspace
+
+  integration:
+    name: D-Bus integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/setup-gtk4
+      - name: Install dbus-run-session
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus dbus-bin
+      - run: make test-integration
