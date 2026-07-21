@@ -17,11 +17,10 @@ cargo test                    # Unit tests
 cargo clippy --all-targets    # Lint (should be zero warnings)
 cargo fmt --all               # Format
 make test                     # Unit tests + clippy
-make test-integration         # Headless Sway integration tests (requires sway)
 make lint                     # Full check: fmt + clippy + test + deny + audit
 ```
 
-Per [tests/integration/CLASSIFICATION.md](https://github.com/jasonherald/mac-doc-hyprland/blob/main/tests/integration/CLASSIFICATION.md) in the monorepo, this repo owns daemon-launch + signal-resilience tests (SIGRTMIN+4 panel toggle, SIGRTMIN+5 DND toggle). The D-Bus `notify-send` path isn't exercised in integration today because the test harness uses an isolated D-Bus to avoid interfering with the real desktop session.
+Per [tests/integration/CLASSIFICATION.md](https://github.com/jasonherald/mac-doc-hyprland/blob/main/tests/integration/CLASSIFICATION.md) in the monorepo, this repo owns daemon-launch + signal-resilience tests (SIGRTMIN+4 panel toggle, SIGRTMIN+5 DND toggle). Those run from the monorepo's headless-Sway harness — this repo has no local integration runner or `make test-integration` target yet ([#16](https://github.com/jasonherald/nwg-notifications/issues/16) tracks adding a D-Bus-shaped one). The D-Bus `notify-send` path isn't exercised in integration today because the harness uses an isolated D-Bus to avoid interfering with the real desktop session.
 
 ## Install (dev workflow)
 
@@ -126,7 +125,7 @@ Panel and DND menu use a transparent backdrop layer-shell surface behind them. B
 
 ## Waybar integration
 
-The daemon writes its current state to `$XDG_RUNTIME_DIR/mac-notifications-status.json` (unread count, DND status, etc.) and signals waybar via `SIGRTMIN+11` on state change — no polling. Waybar's `signal: 11` handler re-reads the file. See the README for the waybar module config snippet.
+The daemon writes its current state to `$XDG_RUNTIME_DIR/nwg-notifications-status.json` (unread count, DND status, etc.) and signals waybar via `SIGRTMIN+11` on state change — no polling. Waybar's `signal: 11` handler re-reads the file. See the README for the waybar module config snippet.
 
 ## See also
 
