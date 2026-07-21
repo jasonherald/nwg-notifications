@@ -187,6 +187,38 @@ fn catch_signal(
     }
 }
 
+/// Kills and reaps a child on drop — no orphan compositors or daemons
+/// on dev machines, including when an assertion fails mid-test.
+struct ProcGuard(std::process::Child);
+
+impl Drop for ProcGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Polls `dir` for an entry whose name passes `pred`, up to `deadline`.
+fn wait_for_entry(
+    dir: &std::path::Path,
+    deadline: Duration,
+    pred: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let start = Instant::now();
+    while start.elapsed() < deadline {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if pred(&name) {
+                    return Some(name);
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    None
+}
+
 #[test]
 #[ignore = "needs isolated session bus — run via `make test-integration`"]
 fn get_count_round_trip() {
@@ -285,4 +317,68 @@ fn emit_action_invoked_wire_payload() {
         assert_eq!((id, action.as_str()), (7, "default"));
     })
     .expect("test thread acquires private main context");
+}
+
+#[test]
+#[ignore = "needs isolated session bus — run via `make test-integration`"]
+fn daemon_stays_resident_hold_guard() {
+    if !std::process::Command::new("sway")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        eprintln!("SKIP: sway not on PATH — hold-guard liveness test needs a headless compositor");
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tempdir for isolated XDG_RUNTIME_DIR/TMPDIR");
+
+    let sway = std::process::Command::new("sway")
+        .args(["--config", "/dev/null"])
+        .env("XDG_RUNTIME_DIR", tmp.path())
+        .env("WLR_BACKENDS", "headless")
+        .env("WLR_LIBINPUT_NO_DEVICES", "1")
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("SWAYSOCK")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn headless sway");
+    let _sway_guard = ProcGuard(sway);
+
+    let wayland_display = wait_for_entry(tmp.path(), Duration::from_secs(10), |n| {
+        n.starts_with("wayland-") && !n.ends_with(".lock")
+    })
+    .expect("headless sway created a wayland socket within 10s");
+    let swaysock = wait_for_entry(tmp.path(), Duration::from_secs(10), |n| {
+        n.starts_with("sway-ipc.") && n.ends_with(".sock")
+    })
+    .expect("headless sway created its IPC socket within 10s");
+
+    let daemon = std::process::Command::new(env!("CARGO_BIN_EXE_nwg-notifications"))
+        .args(["--wm", "sway"])
+        .env("XDG_RUNTIME_DIR", tmp.path())
+        .env("TMPDIR", tmp.path())
+        .env("WAYLAND_DISPLAY", &wayland_display)
+        .env("SWAYSOCK", tmp.path().join(&swaysock))
+        .env_remove("HYPRLAND_INSTANCE_SIGNATURE")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn nwg-notifications under headless sway");
+    let mut daemon_guard = ProcGuard(daemon);
+
+    // Past GTK init + activate + hold(). Without the hold guard,
+    // GApplication exits as soon as activate returns idle — 3s is far
+    // beyond that window.
+    std::thread::sleep(Duration::from_secs(3));
+
+    let status = daemon_guard.0.try_wait().expect("try_wait on daemon");
+    assert!(
+        status.is_none(),
+        "daemon exited within 3s (status: {status:?}) — ApplicationHoldGuard is not keeping GApplication resident"
+    );
 }
