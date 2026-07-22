@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       # rust-toolchain.toml pins the channel + components (rustfmt, clippy);
       # rustup on the runner auto-installs on first cargo invocation.
       - run: cargo fmt --all -- --check
