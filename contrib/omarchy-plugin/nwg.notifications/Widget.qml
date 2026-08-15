@@ -34,8 +34,15 @@ BarWidget {
   function parse(content) {
     try {
       var parsed = JSON.parse(String(content || ""))
+      // Gate on the one field rendering depends on: a non-empty text
+      // glyph. tooltip/class stay permissive — an empty tooltip or an
+      // unknown class degrades gracefully (no tooltip / no tint), and
+      // schema-validating them would couple the widget to daemon
+      // versions for no rendering benefit.
       root.status =
-        parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          && typeof parsed.text === "string" && parsed.text !== ""
+          ? parsed : null
     } catch (e) {
       root.status = null
     }
