@@ -41,7 +41,7 @@ BarWidget {
       // versions for no rendering benefit.
       root.status =
         parsed && typeof parsed === "object" && !Array.isArray(parsed)
-          && typeof parsed.text === "string" && parsed.text !== ""
+          && typeof parsed.text === "string" && parsed.text.trim() !== ""
           ? parsed : null
     } catch (e) {
       root.status = null
