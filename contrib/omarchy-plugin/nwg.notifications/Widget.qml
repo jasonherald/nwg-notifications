@@ -34,7 +34,8 @@ BarWidget {
   function parse(content) {
     try {
       var parsed = JSON.parse(String(content || ""))
-      root.status = parsed && typeof parsed === "object" ? parsed : null
+      root.status =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null
     } catch (e) {
       root.status = null
     }
