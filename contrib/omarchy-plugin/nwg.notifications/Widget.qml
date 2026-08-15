@@ -14,6 +14,10 @@ BarWidget {
   id: root
   moduleName: "nwg.notifications"
 
+  // XDG_RUNTIME_DIR is guaranteed on Omarchy (systemd session) — the
+  // only platform the shell runs on — so the daemon's cache-dir/tmp
+  // fallback chain (src/paths.rs) is deliberately not mirrored here:
+  // an unreachable branch in QML would only be drift risk.
   readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
   readonly property string statusPath: runtimeDir ? runtimeDir + "/nwg-notifications-status.json" : ""
   property var status: null

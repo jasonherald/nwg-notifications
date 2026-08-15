@@ -15,13 +15,19 @@ reads the same status file, drives the daemon over the same signals.
 From the repo root:
 
     make install-omarchy-plugin
-    omarchy plugin enable nwg.notifications --section right
+    omarchy plugin enable nwg.notifications --after omarchy.power
+
+That enables the badge pinned at the bar's far-right edge (one
+command — `enable` accepts the same placement arguments as
+`omarchy bar put`). Use `--section right` instead to simply append,
+or reposition later with `omarchy bar move nwg.notifications ...`.
 
 The widget hides itself until the daemon has written its status file
 (`$XDG_RUNTIME_DIR/nwg-notifications-status.json`). Remember to disable
 Omarchy's built-in engine so the daemon actually receives
-notifications: `omarchy plugin disable omarchy.notifications` — see the
-repo README's "Omarchy 4.0" section.
+notifications: `omarchy plugin disable omarchy.notifications`, then
+`omarchy restart shell` (a running shell keeps the service loaded
+until restarted) — see the repo README's "Omarchy 4.0" section.
 
 ## Uninstall
 

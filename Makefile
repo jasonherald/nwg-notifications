@@ -177,7 +177,8 @@ install-dbus:
 		TARGET_FILE="$$TARGET_DIR/$$SERVICE_NAME"; \
 		echo "Installing D-Bus service file to $$TARGET_FILE"; \
 		echo "  (D-Bus Exec path → $$BIN_PATH)"; \
-		sed "s|@BIN_PATH@|$$BIN_PATH|g" "$$TEMPLATE" > "$$TARGET_FILE" || exit 1; \
+		sed "s|@BIN_PATH@|$$BIN_PATH|g" "$$TEMPLATE" > "$$TARGET_FILE.tmp" || exit 1; \
+		mv "$$TARGET_FILE.tmp" "$$TARGET_FILE" || exit 1; \
 		if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
 			chown "$$SUDO_USER:" "$$TARGET_FILE" || { \
 				echo "ERROR: chown $$TARGET_FILE to $$SUDO_USER failed; D-Bus user-service would be unmanageable by the target user"; \
@@ -234,7 +235,9 @@ install-omarchy-plugin:
 	@mkdir -p "$(OMARCHY_PLUGIN_DIR)"
 	@cp -r $(OMARCHY_PLUGIN_SRC)/. "$(OMARCHY_PLUGIN_DIR)/"
 	@echo "Installed to $(OMARCHY_PLUGIN_DIR)"
-	@echo "Enable with: omarchy plugin enable nwg.notifications --section right"
+	@echo "Enable at the bar's far-right edge with:"
+	@echo "  omarchy plugin enable nwg.notifications --after omarchy.power"
+	@echo "(or --section right to simply append to the right section)"
 
 uninstall-omarchy-plugin:
 	rm -rf "$(OMARCHY_PLUGIN_DIR)"
