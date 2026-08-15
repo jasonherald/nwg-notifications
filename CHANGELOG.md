@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so nwg-notifications can own `org.freedesktop.Notifications`. The
   README also documents the daemon's automatic GTK dmabuf workaround
   (see "Known issue").
+- Omarchy shell bar widget (`contrib/omarchy-plugin/nwg.notifications`,
+  installed via `make install-omarchy-plugin`): bell + unread count on
+  the Omarchy 4.0 Quickshell bar, the waybar module's successor there.
+  Left-click toggles the panel, right-click the DND menu, middle-click
+  DND — the same signal contract as the waybar module, driven by the
+  same status file. Waybar setups are unaffected.
 
 ### Changed
 

@@ -37,6 +37,7 @@ SONAR_TRUSTSTORE_PASSWORD ?= changeit
 .PHONY: all build build-release test test-integration lint check-tools \
         lint-fmt lint-clippy lint-test lint-deny lint-audit \
         install install-bin install-dbus uninstall uninstall-dbus \
+        install-omarchy-plugin uninstall-omarchy-plugin \
         upgrade \
         sonar clean help
 
@@ -54,6 +55,8 @@ Targets:
   make install-dbus    Install D-Bus service files to $(DBUS_USER_DIR) — ALWAYS user-scope (no sudo)
   make uninstall       Remove installed binary (system) and D-Bus service files (user)
   make uninstall-dbus  Remove D-Bus service files only (user) — symmetric with install-dbus
+  make install-omarchy-plugin    Install the Omarchy shell bar widget to ~/.config/omarchy/plugins (user-scope)
+  make uninstall-omarchy-plugin  Remove the Omarchy shell bar widget
   make upgrade         Resident-aware: capture running args, stop, rebuild, install, restart
   make sonar           Run SonarQube scan (requires sonar-scanner + .env)
   make clean           cargo clean
@@ -174,7 +177,8 @@ install-dbus:
 		TARGET_FILE="$$TARGET_DIR/$$SERVICE_NAME"; \
 		echo "Installing D-Bus service file to $$TARGET_FILE"; \
 		echo "  (D-Bus Exec path → $$BIN_PATH)"; \
-		sed "s|@BIN_PATH@|$$BIN_PATH|g" "$$TEMPLATE" > "$$TARGET_FILE" || exit 1; \
+		sed "s|@BIN_PATH@|$$BIN_PATH|g" "$$TEMPLATE" > "$$TARGET_FILE.tmp" || exit 1; \
+		mv "$$TARGET_FILE.tmp" "$$TARGET_FILE" || exit 1; \
 		if [ -n "$$SUDO_USER" ] && [ "$$(id -u)" -eq 0 ]; then \
 			chown "$$SUDO_USER:" "$$TARGET_FILE" || { \
 				echo "ERROR: chown $$TARGET_FILE to $$SUDO_USER failed; D-Bus user-service would be unmanageable by the target user"; \
@@ -211,6 +215,33 @@ uninstall-dbus:
 			exit 1; \
 		}; \
 	done
+
+# Omarchy shell (Quickshell) bar-widget plugin — Omarchy 4.0+. Always
+# user-scope, like install-dbus: the shell loads user plugins from
+# ~/.config/omarchy/plugins/ and hot-reloads on change. Validated via
+# the omarchy CLI when present (skipped otherwise so the target works
+# on non-Omarchy machines, e.g. packagers). Enabling the widget on the
+# bar is user config, left to the user:
+#   omarchy plugin enable nwg.notifications --section right
+OMARCHY_PLUGIN_SRC := contrib/omarchy-plugin/nwg.notifications
+OMARCHY_PLUGIN_DIR := $(HOME)/.config/omarchy/plugins/nwg.notifications
+
+install-omarchy-plugin:
+	@if command -v omarchy >/dev/null 2>&1; then \
+		omarchy plugin validate "$(OMARCHY_PLUGIN_SRC)" || exit 1; \
+	else \
+		echo "note: omarchy CLI not found — skipping manifest validation"; \
+	fi
+	@mkdir -p "$(OMARCHY_PLUGIN_DIR)"
+	@cp -r $(OMARCHY_PLUGIN_SRC)/. "$(OMARCHY_PLUGIN_DIR)/"
+	@echo "Installed to $(OMARCHY_PLUGIN_DIR)"
+	@echo "Enable at the bar's far-right edge with:"
+	@echo "  omarchy plugin enable nwg.notifications --after omarchy.power"
+	@echo "(or --section right to simply append to the right section)"
+
+uninstall-omarchy-plugin:
+	rm -rf "$(OMARCHY_PLUGIN_DIR)"
+	@echo "Removed $(OMARCHY_PLUGIN_DIR) (disable in the bar with: omarchy plugin disable nwg.notifications)"
 
 uninstall: uninstall-dbus
 	@echo "Removing binary"

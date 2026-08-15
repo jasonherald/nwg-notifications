@@ -248,10 +248,13 @@ the shell's engine:
 omarchy plugin disable omarchy.notifications
 ```
 
-nwg-notifications requests the name with the D-Bus `REPLACE` flag and
-the request stays queued at the bus, so an already-running daemon
-takes the name over the moment the shell releases it — no restart
-needed. Re-enable the shell engine any time with
+A shell that is already running keeps its notification service loaded
+(the plugin is `keepLoaded`), so follow the disable with
+`omarchy restart shell` — the name is released the moment the shell
+restarts. nwg-notifications requests the name with the D-Bus `REPLACE`
+flag and the request stays queued at the bus, so the already-running
+daemon takes it over that instant with no daemon restart (verified
+live on Omarchy 4.0.0). Re-enable the shell engine any time with
 `omarchy plugin enable omarchy.notifications`; whichever owns the name
 receives the notifications.
 
@@ -259,7 +262,9 @@ Quattro has no waybar — the bell/unread badge for the Quickshell bar
 ships as an Omarchy shell plugin in this repo: see
 `contrib/omarchy-plugin/nwg.notifications/` (install with
 `make install-omarchy-plugin`, then
-`omarchy plugin enable nwg.notifications --section right`). The waybar
+`omarchy plugin enable nwg.notifications --after omarchy.power` to
+enable it pinned at the bar's far-right edge — or `--section right`
+to simply append). The waybar
 module below keeps working unchanged for waybar setups.
 
 ## Waybar integration
