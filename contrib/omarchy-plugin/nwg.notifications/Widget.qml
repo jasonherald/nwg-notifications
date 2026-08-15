@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
-import qs.Commons
 
 // Bar badge for the nwg-notifications daemon. A second consumer of the
 // same status-file contract the waybar module reads: the daemon writes
@@ -64,6 +63,9 @@ BarWidget {
     bar: root.bar
     text: root.status ? String(root.status.text || "") : ""
     tooltipText: root.status ? String(root.status.tooltip || "") : ""
+    // Urgent (active) coloring while Do-Not-Disturb is on, driven by
+    // the status file's class field — same signal waybar styles on.
+    active: root.status !== null && root.status.class === "dnd"
     horizontalMargin: 6
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.LeftButton) root.signalDaemon(4)
