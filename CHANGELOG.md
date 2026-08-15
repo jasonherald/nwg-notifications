@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.0] — Unreleased
 
+### Added
+
+- README documents Hyprland Lua-config autostart (Omarchy 4.0
+  "Quattro"): `autostart.conf` is not read there and the Quattro
+  migration does not carry custom `exec-once` lines across. A new
+  "Omarchy 4.0" section covers disabling the shell's built-in
+  notification engine (`omarchy plugin disable omarchy.notifications`)
+  so nwg-notifications can own `org.freedesktop.Notifications`. The
+  README also documents the daemon's automatic GTK dmabuf workaround
+  (see "Known issue").
+
 ### Changed
 
 - Dependency refresh: `nwg-common` `0.6` → `0.7` plus a routine

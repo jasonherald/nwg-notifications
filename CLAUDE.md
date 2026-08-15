@@ -48,6 +48,13 @@ nwg-notifications --wm sway --persist
 
 The daemon auto-starts the first time any app calls `org.freedesktop.Notifications` once the D-Bus service file is registered — explicit `exec-once` isn't strictly required, but makes the first toast faster.
 
+On Omarchy 4.0 (Quattro) the Quickshell shell's own notification
+engine owns `org.freedesktop.Notifications`; disable it with
+`omarchy plugin disable omarchy.notifications` or the daemon starts
+but never receives notifications. The Quickshell bar badge lives in
+`contrib/omarchy-plugin/nwg.notifications/` (waybar's successor there;
+waybar integration is unchanged for waybar setups).
+
 ## What lives where
 
 ```text
