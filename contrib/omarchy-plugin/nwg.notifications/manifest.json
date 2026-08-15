@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "nwg.notifications",
+  "name": "nwg-notifications",
+  "version": "1.0.0",
+  "author": "Jason Herald",
+  "license": "MIT",
+  "description": "Bell + unread count for the nwg-notifications daemon",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "nwg-notifications",
+    "description": "Bell icon with unread count; left-click toggles the panel, right-click the DND menu, middle-click DND",
+    "category": "Notifications",
+    "allowMultiple": false
+  }
+}
