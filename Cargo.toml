@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared library
-nwg-common = "0.6"
+nwg-common = "0.7"
 
 # Atomic file writes for the JSON config (NamedTempFile + persist
 # = same-fs tempfile + rename(2), the canonical POSIX atomic write).

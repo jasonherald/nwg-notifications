@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.7.0] — Unreleased
+
+### Changed
+
+- Dependency refresh: `nwg-common` `0.6` → `0.7` plus a routine
+  lockfile update.
+
+### Fixed
+
+- Notification click-to-focus / deep-linking now works on Hyprland
+  0.55+ sessions using the Lua configuration (Omarchy 4.0 "Quattro").
+  Such sessions reject the legacy textual IPC dispatchers;
+  `nwg-common 0.7` detects the rejection and retries in the session's
+  `hl.dsp.*` syntax. Classic hyprlang sessions are unaffected.
+
 ## [0.6.0] — 2026-07-21
 
 ### Added
