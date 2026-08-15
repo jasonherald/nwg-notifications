@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Such sessions reject the legacy textual IPC dispatchers;
   `nwg-common 0.7` detects the rejection and retries in the session's
   `hl.dsp.*` syntax. Classic hyprlang sessions are unaffected.
+- The daemon no longer crashes on monitor DPMS cycles under
+  Hyprland ≥ 0.56 with GTK ≤ 4.22 (a GTK dmabuf-feedback bug). The
+  daemon now sets `GDK_WAYLAND_DISABLE=zwp_linux_dmabuf_v1` itself on
+  Hyprland sessions with an affected GTK — covering D-Bus activation
+  and un-wrapped autostart lines, not just launches that carried the
+  env manually. An explicit `GDK_WAYLAND_DISABLE` setting is always
+  respected, Sway sessions are untouched, and the workaround
+  self-retires once a fixed GTK (> 4.22) is installed.
 
 ## [0.6.0] — 2026-07-21
 

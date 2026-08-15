@@ -21,6 +21,30 @@ use std::rc::Rc;
 /// Daemon + CLI entry point. Called by the `main.rs` shim.
 pub fn run() {
     nwg_common::process::handle_dump_args();
+
+    // GTK4 <= 4.22 crashes (munmap typo in gdkdmabuf-wayland.c) when
+    // Hyprland >= 0.56 re-sends dmabuf feedback on DPMS cycles — see
+    // README "Known issue". Disable GTK's dmabuf path on Hyprland
+    // sessions while the linked GTK is still affected, so every launch
+    // path (autostart with or without an env wrapper, D-Bus activation,
+    // manual runs) is covered. Never overrides an explicit user
+    // setting; Sway and fixed-GTK setups are untouched. Hyprland < 0.56
+    // also takes this path — the only cost there is GTK falling back
+    // to shm buffers. The version gate self-retires once GTK > 4.22 is
+    // installed.
+    let gdk_disable = std::env::var_os("GDK_WAYLAND_DISABLE");
+    if needs_dmabuf_workaround(
+        gdk_disable.as_deref(),
+        std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
+        (gtk4::major_version(), gtk4::minor_version()),
+    ) {
+        // SAFETY: single-threaded at this point — before the signal
+        // listener thread starts and before GTK spawns any workers.
+        unsafe {
+            std::env::set_var("GDK_WAYLAND_DISABLE", "zwp_linux_dmabuf_v1");
+        }
+    }
+
     // Use the lower-level entry point so we have ArgMatches available for
     // value_source filtering in --update mode (so we only push flags the
     // user actually passed, not their defaults).
@@ -168,6 +192,18 @@ pub fn run() {
     });
 
     app.run_with_args::<String>(&[]);
+}
+
+/// True when the GDK dmabuf workaround should be applied at startup:
+/// no explicit user `GDK_WAYLAND_DISABLE` setting, a Hyprland session,
+/// and a linked GTK still affected by the bug (<= 4.22). Pure so the
+/// decision table is unit-testable; the env mutation stays in [`run`].
+fn needs_dmabuf_workaround(
+    existing_setting: Option<&std::ffi::OsStr>,
+    hyprland_session: bool,
+    gtk_version: (u32, u32),
+) -> bool {
+    existing_setting.is_none() && hyprland_session && gtk_version <= (4, 22)
 }
 
 /// Sets up the notification daemon: state, popup manager, panel, D-Bus server, and listeners.
@@ -542,5 +578,38 @@ mod tests {
             after.max_popups, 42,
             "max_popups was not overridden; reload should apply"
         );
+    }
+
+    #[test]
+    fn dmabuf_workaround_applies_on_hyprland_with_affected_gtk() {
+        assert!(needs_dmabuf_workaround(None, true, (4, 22)));
+        assert!(needs_dmabuf_workaround(None, true, (4, 21)));
+    }
+
+    #[test]
+    fn dmabuf_workaround_respects_explicit_user_setting() {
+        use std::ffi::OsStr;
+        assert!(!needs_dmabuf_workaround(
+            Some(OsStr::new("zwp_linux_dmabuf_v1")),
+            true,
+            (4, 22)
+        ));
+        // Even an empty explicit setting is a user decision.
+        assert!(!needs_dmabuf_workaround(
+            Some(OsStr::new("")),
+            true,
+            (4, 22)
+        ));
+    }
+
+    #[test]
+    fn dmabuf_workaround_skips_non_hyprland_sessions() {
+        assert!(!needs_dmabuf_workaround(None, false, (4, 22)));
+    }
+
+    #[test]
+    fn dmabuf_workaround_retires_on_fixed_gtk() {
+        assert!(!needs_dmabuf_workaround(None, true, (4, 23)));
+        assert!(!needs_dmabuf_workaround(None, true, (5, 0)));
     }
 }
