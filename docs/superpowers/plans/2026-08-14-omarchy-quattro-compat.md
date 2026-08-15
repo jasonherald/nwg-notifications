@@ -199,7 +199,7 @@ In `src/app.rs`, directly after the `nwg_common::process::handle_dump_args();` l
     }
 ```
 
-`gtk4::major_version()` / `gtk4::minor_version()` are plain getters over the linked library and do not require `gtk4::init` (they wrap `gtk_get_major_version`). If the compiler or a runtime abort says otherwise, fall back to `gtk4::ffi::gtk_get_major_version()` (unsafe, same C getters) — and report the deviation.
+`gtk4::major_version()` / `gtk4::minor_version()` are plain getters over the linked library and do not require `gtk4::init` — verified against gtk4-rs 0.11.4, whose wrappers explicitly skip the initialization assertion. Use them directly.
 
 - [ ] **Step 5: Run tests + full suite**
 
@@ -249,15 +249,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 3: Docs — Lua autostart + Omarchy 4.0 (README, CLAUDE.md)
 
 **Files:**
-- Modify: `README.md` (after the existing "Hyprland autostart" section, ~line 145-160; and a new section near "Waybar integration" ~line 203)
+- Modify: `README.md` (inside the existing `## Hyprland autostart` section; and a new section immediately before `## Waybar integration`)
 - Modify: `CLAUDE.md` (Run locally / integration notes area)
 - Modify: `CHANGELOG.md` (docs bullet)
 
 - [ ] **Step 1: README — Lua autostart subsection**
 
-The existing `## Hyprland autostart` section shows `autostart.conf` `exec-once` forms (~lines 145-160). Append this subsection to it (keep the existing content untouched):
+The existing `## Hyprland autostart` section shows `autostart.conf` `exec-once` forms. Append this subsection to it (keep the existing content untouched):
 
-```markdown
+````markdown
 ### Hyprland Lua config (Omarchy 4.0 "Quattro" and other Lua setups)
 
 Hyprland 0.55+ Lua configurations don't read `autostart.conf`. On
@@ -279,15 +279,13 @@ masked — the D-Bus service files still auto-activate the daemon on the
 first notification once the name is free — but activation only wins if
 nothing else owns `org.freedesktop.Notifications` (see the Omarchy 4.0
 section below), so re-add the autostart line explicitly.
-```
-
-Mind the nested code fences — use four-backtick outer fencing in the actual file if needed; the README currently uses plain triple fences with no nesting, so writing the section directly (its lua block is a sibling fence, not nested) works as shown.
+````
 
 - [ ] **Step 2: README — Omarchy 4.0 section**
 
 Insert a new top-level section immediately BEFORE `## Waybar integration`:
 
-```markdown
+````markdown
 ## Omarchy 4.0 "Quattro"
 
 Omarchy 4.0 ships its own notification engine inside the Quickshell
@@ -313,7 +311,7 @@ ships as an Omarchy shell plugin in this repo: see
 `make install-omarchy-plugin`, then
 `omarchy plugin enable nwg.notifications --section right`). The waybar
 module below keeps working unchanged for waybar setups.
-```
+````
 
 (The `contrib/…` path and make target land in PR 2 — writing the pointer now is fine; both PRs merge before any release.)
 

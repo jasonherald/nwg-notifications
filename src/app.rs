@@ -33,9 +33,20 @@ pub fn run() {
     // to shm buffers. The version gate self-retires once GTK > 4.22 is
     // installed.
     let gdk_disable = std::env::var_os("GDK_WAYLAND_DISABLE");
+    // Two Hyprland signals so D-Bus activation is covered even on
+    // sessions that never imported HYPRLAND_INSTANCE_SIGNATURE into the
+    // activation environment (uwsm/Omarchy do; hand-rolled setups may
+    // not): the env var, or Hyprland's per-instance socket directory
+    // under XDG_RUNTIME_DIR. A stale hypr/ dir after switching
+    // compositors mid-boot at worst re-applies the workaround on Sway —
+    // an shm fallback, not a crash.
+    let hyprland_session = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
+        || std::env::var_os("XDG_RUNTIME_DIR")
+            .map(|dir| std::path::Path::new(&dir).join("hypr").is_dir())
+            .unwrap_or(false);
     if needs_dmabuf_workaround(
         gdk_disable.as_deref(),
-        std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
+        hyprland_session,
         (gtk4::major_version(), gtk4::minor_version()),
     ) {
         // SAFETY: single-threaded at this point — before the signal
@@ -194,16 +205,23 @@ pub fn run() {
     app.run_with_args::<String>(&[]);
 }
 
+/// Last GTK (major, minor) line affected by the dmabuf-feedback crash;
+/// the workaround self-retires on anything newer. Tests pin the
+/// boundary with literals on purpose — moving this constant should
+/// break them until the change is conscious.
+const MAX_AFFECTED_GTK_VERSION: (u32, u32) = (4, 22);
+
 /// True when the GDK dmabuf workaround should be applied at startup:
 /// no explicit user `GDK_WAYLAND_DISABLE` setting, a Hyprland session,
-/// and a linked GTK still affected by the bug (<= 4.22). Pure so the
-/// decision table is unit-testable; the env mutation stays in [`run`].
+/// and a linked GTK still affected by the bug
+/// ([`MAX_AFFECTED_GTK_VERSION`] or older). Pure so the decision table
+/// is unit-testable; the env mutation stays in [`run`].
 fn needs_dmabuf_workaround(
     existing_setting: Option<&std::ffi::OsStr>,
     hyprland_session: bool,
     gtk_version: (u32, u32),
 ) -> bool {
-    existing_setting.is_none() && hyprland_session && gtk_version <= (4, 22)
+    existing_setting.is_none() && hyprland_session && gtk_version <= MAX_AFFECTED_GTK_VERSION
 }
 
 /// Sets up the notification daemon: state, popup manager, panel, D-Bus server, and listeners.

@@ -6,7 +6,7 @@
 
 ## Problem
 
-Omarchy 4.0 (Quattro, Hyprland 0.56.2) changes three things that break or
+Omarchy 4.0 (Quattro, Hyprland 0.56.2) changes four things that break or
 orphan nwg-notifications:
 
 1. **A Quickshell notification engine ships enabled.** The `omarchy-shell`
@@ -19,13 +19,14 @@ orphan nwg-notifications:
    detect-and-retry in `hl.dsp.*` syntax (classic sessions unaffected).
 3. **waybar is gone.** The status-JSON + `SIGRTMIN+11` badge integration
    has no consumer on Quattro; the bar is Quickshell (`shell.json`).
+4. **The DPMS crash window widens.** GTK4 ≤ 4.22 crashes on DPMS cycles
+   under Hyprland ≥ 0.56 unless
+   `GDK_WAYLAND_DISABLE=zwp_linux_dmabuf_v1` is set — the autostart.lua
+   entry carries the env, but D-Bus activation (our .service files)
+   execs the bare binary with no protection.
 
 Also: `autostart.conf` is not read by Lua config, and the Quattro migration
-does not carry `exec-once` lines across (dock PR #102 wording); and GTK4
-≤ 4.22 crashes on DPMS cycles under Hyprland ≥ 0.56 unless
-`GDK_WAYLAND_DISABLE=zwp_linux_dmabuf_v1` is set — the autostart.lua entry
-carries the env, but D-Bus activation (our .service files) execs the bare
-binary.
+does not carry `exec-once` lines across (dock PR #102 wording).
 
 ## Hard constraint
 
