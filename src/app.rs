@@ -36,13 +36,13 @@ pub fn run() {
     // Two Hyprland signals so D-Bus activation is covered even on
     // sessions that never imported HYPRLAND_INSTANCE_SIGNATURE into the
     // activation environment (uwsm/Omarchy do; hand-rolled setups may
-    // not): the env var, or Hyprland's per-instance socket directory
-    // under XDG_RUNTIME_DIR. A stale hypr/ dir after switching
-    // compositors mid-boot at worst re-applies the workaround on Sway —
-    // an shm fallback, not a crash.
+    // not): the env var, or a LIVE per-instance Hyprland IPC socket
+    // under XDG_RUNTIME_DIR. The probe connects rather than stats, so
+    // stale directories or crash-leftover socket files from a previous
+    // session never count — Sway sessions stay untouched.
     let hyprland_session = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
         || std::env::var_os("XDG_RUNTIME_DIR")
-            .map(|dir| std::path::Path::new(&dir).join("hypr").is_dir())
+            .map(|dir| hyprland_socket_alive(std::path::Path::new(&dir)))
             .unwrap_or(false);
     if needs_dmabuf_workaround(
         gdk_disable.as_deref(),
@@ -203,6 +203,21 @@ pub fn run() {
     });
 
     app.run_with_args::<String>(&[]);
+}
+
+/// True when a live Hyprland instance is reachable at
+/// `runtime_dir/hypr/<instance>/.socket.sock`. A bare `hypr/`
+/// directory — or a socket file left behind by a crashed instance —
+/// is not enough: the probe connects, so only a listening compositor
+/// counts. Keeps the dmabuf workaround off Sway even when a previous
+/// Hyprland session left stale state in the runtime dir.
+fn hyprland_socket_alive(runtime_dir: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(runtime_dir.join("hypr")) else {
+        return false;
+    };
+    entries.flatten().any(|instance| {
+        std::os::unix::net::UnixStream::connect(instance.path().join(".socket.sock")).is_ok()
+    })
 }
 
 /// Last GTK (major, minor) line affected by the dmabuf-feedback crash;
@@ -629,5 +644,32 @@ mod tests {
     fn dmabuf_workaround_retires_on_fixed_gtk() {
         assert!(!needs_dmabuf_workaround(None, true, (4, 23)));
         assert!(!needs_dmabuf_workaround(None, true, (5, 0)));
+    }
+
+    #[test]
+    fn hyprland_socket_probe_rejects_missing_and_stale_state() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // No hypr/ directory at all (Sway session).
+        assert!(!hyprland_socket_alive(tmp.path()));
+        // Instance dir without a socket — the shape a clean Hyprland
+        // exit leaves behind (observed live: only lock/log files).
+        let instance = tmp.path().join("hypr").join("instance-1");
+        std::fs::create_dir_all(&instance).expect("mkdir instance");
+        assert!(!hyprland_socket_alive(tmp.path()));
+        // Crash leftover: socket file exists but nothing listens —
+        // connect must fail, so this still doesn't count as Hyprland.
+        let sock = instance.join(".socket.sock");
+        drop(std::os::unix::net::UnixListener::bind(&sock).expect("bind"));
+        assert!(!hyprland_socket_alive(tmp.path()));
+    }
+
+    #[test]
+    fn hyprland_socket_probe_accepts_a_listening_instance() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance = tmp.path().join("hypr").join("instance-1");
+        std::fs::create_dir_all(&instance).expect("mkdir instance");
+        let _listener = std::os::unix::net::UnixListener::bind(instance.join(".socket.sock"))
+            .expect("bind listening socket");
+        assert!(hyprland_socket_alive(tmp.path()));
     }
 }
