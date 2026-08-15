@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > The full pre-split history is preserved in the monorepo's git log; this
 > file only documents changes from v0.3.0 onward.
 
+## [0.7.0] — Unreleased
+
+### Added
+
+- README documents Hyprland Lua-config autostart (Omarchy 4.0
+  "Quattro"): `autostart.conf` is not read there and the Quattro
+  migration does not carry custom `exec-once` lines across. A new
+  "Omarchy 4.0" section covers disabling the shell's built-in
+  notification engine (`omarchy plugin disable omarchy.notifications`)
+  so nwg-notifications can own `org.freedesktop.Notifications`. The
+  README also documents the daemon's automatic GTK dmabuf workaround
+  (see "Known issue").
+
+### Changed
+
+- Dependency refresh: `nwg-common` `0.6` → `0.7`.
+
+### Fixed
+
+- Notification click-to-focus / deep-linking now works on Hyprland
+  0.55+ sessions using the Lua configuration (Omarchy 4.0 "Quattro").
+  Such sessions reject the legacy textual IPC dispatchers;
+  `nwg-common 0.7` detects the rejection and retries in the session's
+  `hl.dsp.*` syntax. Classic hyprlang sessions are unaffected.
+- The daemon no longer crashes on monitor DPMS cycles under
+  Hyprland ≥ 0.56 with GTK ≤ 4.22 (a GTK dmabuf-feedback bug). The
+  daemon now sets `GDK_WAYLAND_DISABLE=zwp_linux_dmabuf_v1` itself on
+  Hyprland sessions with an affected GTK — covering D-Bus activation
+  and un-wrapped autostart lines, not just launches that carried the
+  env manually. An explicit `GDK_WAYLAND_DISABLE` setting is always
+  respected, Sway sessions are untouched, and the workaround
+  self-retires once a fixed GTK (> 4.22) is installed.
+
 ## [0.6.0] — 2026-07-21
 
 ### Added

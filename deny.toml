@@ -56,8 +56,15 @@ deny = []
 # Transitive duplicate while the proc-macro ecosystem migrates syn 2 → 3.
 # Pinned to the exact 2.x resolved in Cargo.lock so a future intra-2.x
 # duplicate still warns; refresh the pin when `cargo update` moves syn.
+#
+# Transitive duplicate from the nwg-common 0.7 bump: gtk4-layer-shell-sys
+# 0.6.1 (pulled in via gtk4-layer-shell 0.8.1) moved to system-deps 8,
+# while the rest of the gtk4-rs -sys crates still resolve system-deps 7.
+# Pinned to the exact 7.x resolved in Cargo.lock so a future intra-7.x
+# duplicate still warns; refresh the pin when `cargo update` moves it.
 skip = [
     { crate = "syn@2.0.119", reason = "proc-macro deps split between syn 2 and syn 3" },
+    { crate = "system-deps@7.0.8", reason = "gtk4-rs -sys crates split between system-deps 7 and 8 pending gtk4-layer-shell-sys's migration" },
 ]
 
 # =============================================================================

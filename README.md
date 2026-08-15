@@ -144,6 +144,8 @@ Once registered, the daemon auto-starts the first time any app calls **either** 
 
 ## Hyprland autostart
 
+The conf-syntax forms below apply to classic (pre-Lua / pre-Omarchy-4.0) Hyprland configs; for Lua configs see the subsection at the end.
+
 ```ini
 # ~/.config/hypr/autostart.conf
 exec-once = nwg-notifications --persist
@@ -158,6 +160,40 @@ exec-once = uwsm-app -- nwg-notifications --persist
 The bare form works everywhere; `uwsm-app --` is optional (Slackware and other non-systemd setups don't ship it).
 
 Autostart isn't strictly required thanks to D-Bus auto-activation on either name, but it makes the daemon ready before the first call — avoids a few-hundred-millisecond startup delay on your first toast (or your first nwg-panel count query on cold boot).
+
+### Hyprland Lua config (Omarchy 4.0 "Quattro" and other Lua setups)
+
+Hyprland 0.55+ Lua configurations don't read `autostart.conf`. On
+Omarchy 4.0 the equivalent lives in `~/.config/hypr/autostart.lua`:
+
+```lua
+-- ~/.config/hypr/autostart.lua
+o.launch_on_start([[nwg-notifications --persist]])
+```
+
+(On plain Lua setups without Omarchy's helpers, register the command
+on the start hook:
+`hl.on("hyprland.start", function() hl.exec_cmd([[nwg-notifications --persist]]) end)`.)
+
+**Migrating to Omarchy 4.0:** the Quattro migration generates the new
+`.lua` config files but does **not** carry custom `exec-once` lines
+across from `autostart.conf`. For nwg-notifications the loss is partly
+masked — the D-Bus service files still auto-activate the daemon on the
+first notification once the name is free — but activation only wins if
+nothing else owns `org.freedesktop.Notifications` (see the Omarchy 4.0
+section below), so re-add the autostart line explicitly.
+
+### Known issue: GTK4 crash on DPMS cycles (Hyprland ≥ 0.56)
+
+GTK 4.22 and earlier crash (a `munmap` typo in `gdkdmabuf-wayland.c`)
+when Hyprland ≥ 0.56 re-sends dmabuf feedback as monitors power back
+on. nwg-notifications works around this automatically: on Hyprland
+sessions with an affected GTK the daemon sets
+`GDK_WAYLAND_DISABLE=zwp_linux_dmabuf_v1` itself at startup, whatever
+launched it — autostart, D-Bus activation, or a manual run. Setting
+`GDK_WAYLAND_DISABLE` yourself (even to empty) always wins over the
+automatic behavior, and the workaround retires on its own once a fixed
+GTK (> 4.22) is installed.
 
 ## Configuration
 
@@ -199,6 +235,32 @@ pkill -f -39 nwg-notifications     # SIGRTMIN+5
 # Open DND duration menu
 pkill -f -40 nwg-notifications     # SIGRTMIN+6
 ```
+
+## Omarchy 4.0 "Quattro"
+
+Omarchy 4.0 ships its own notification engine inside the Quickshell
+shell (`omarchy-shell`), and it owns `org.freedesktop.Notifications`
+from session start — nwg-notifications will start but sits idle
+without the name. To use nwg-notifications as your daemon, disable
+the shell's engine:
+
+```bash
+omarchy plugin disable omarchy.notifications
+```
+
+nwg-notifications requests the name with the D-Bus `REPLACE` flag and
+the request stays queued at the bus, so an already-running daemon
+takes the name over the moment the shell releases it — no restart
+needed. Re-enable the shell engine any time with
+`omarchy plugin enable omarchy.notifications`; whichever owns the name
+receives the notifications.
+
+Quattro has no waybar — the bell/unread badge for the Quickshell bar
+ships as an Omarchy shell plugin in this repo: see
+`contrib/omarchy-plugin/nwg.notifications/` (install with
+`make install-omarchy-plugin`, then
+`omarchy plugin enable nwg.notifications --section right`). The waybar
+module below keeps working unchanged for waybar setups.
 
 ## Waybar integration
 
